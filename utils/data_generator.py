@@ -1,0 +1,273 @@
+"""
+Data generator module for converting OHLCV price data into token sequences.
+
+This module downloads historical data and converts it into the trading language
+format suitable for training an LLM.
+"""
+
+import pandas as pd
+import yfinance as yf
+from typing import List, Tuple
+import os
+from pathlib import Path
+
+from utils.token_definitions import get_symbol_token, get_timeframe_token
+from utils.indicators import add_all_indicators
+
+
+def download_price_data(
+    symbol: str,
+    start_date: str = "2020-01-01",
+    end_date: str = "2024-01-01",
+    save_path: str = None,
+    use_sample_data: bool = False,
+    sample_data_path: str = None
+) -> pd.DataFrame:
+    """
+    Download historical price data using yfinance, or load sample data if offline.
+    
+    Args:
+        symbol: Ticker symbol (e.g., 'SPY')
+        start_date: Start date in YYYY-MM-DD format
+        end_date: End date in YYYY-MM-DD format
+        save_path: Optional path to save raw data
+        use_sample_data: If True, load from sample data instead of downloading
+        sample_data_path: Path to sample CSV file
+        
+    Returns:
+        DataFrame with OHLCV data
+    """
+    if use_sample_data or sample_data_path:
+        # Load from sample data
+        if sample_data_path and os.path.exists(sample_data_path):
+            print(f"Loading sample data from {sample_data_path}...")
+            df = pd.read_csv(sample_data_path, index_col=0, parse_dates=True)
+        else:
+            # Try default sample data location
+            default_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'raw', 'SPY_sample_data.csv')
+            if os.path.exists(default_path):
+                print(f"Loading sample data from {default_path}...")
+                df = pd.read_csv(default_path, index_col=0, parse_dates=True)
+            else:
+                raise FileNotFoundError(
+                    f"Sample data not found. Please provide sample_data_path or ensure "
+                    f"sample data exists at {default_path}"
+                )
+        
+        print(f"Loaded {len(df)} days of sample data")
+        
+        # Filter by date range if specified
+        if start_date:
+            df = df[df.index >= start_date]
+        if end_date:
+            df = df[df.index < end_date]
+        
+        print(f"Filtered to {len(df)} days in date range")
+    else:
+        # Download from yfinance
+        print(f"Downloading {symbol} data from {start_date} to {end_date}...")
+        
+        try:
+            ticker = yf.Ticker(symbol)
+            df = ticker.history(start=start_date, end=end_date)
+        except Exception as e:
+            print(f"\n⚠️  Failed to download data: {e}")
+            print("Attempting to use sample data instead...")
+            return download_price_data(
+                symbol=symbol,
+                start_date=start_date,
+                end_date=end_date,
+                save_path=save_path,
+                use_sample_data=True
+            )
+        
+        if df.empty:
+            print("\n⚠️  No data downloaded, attempting to use sample data instead...")
+            return download_price_data(
+                symbol=symbol,
+                start_date=start_date,
+                end_date=end_date,
+                save_path=save_path,
+                use_sample_data=True
+            )
+        
+        print(f"Downloaded {len(df)} days of data")
+    
+    # Ensure we have the expected columns
+    required_cols = ['Open', 'High', 'Low', 'Close', 'Volume']
+    if not all(col in df.columns for col in required_cols):
+        raise ValueError(f"Missing required columns in data. Found: {df.columns.tolist()}")
+    
+    if save_path:
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        df.to_csv(save_path)
+        print(f"Saved data to {save_path}")
+    
+    return df
+
+
+def generate_token_sequences(
+    df: pd.DataFrame,
+    symbol: str,
+    timeframe: str = "DAILY"
+) -> List[str]:
+    """
+    Convert OHLCV DataFrame into token sequences.
+    
+    Args:
+        df: DataFrame with OHLCV data and indicators
+        symbol: Trading symbol
+        timeframe: Timeframe string
+        
+    Returns:
+        List of token sequences (strings)
+    """
+    sequences = []
+    
+    # Get symbol and timeframe tokens
+    sym_token = get_symbol_token(symbol)
+    tf_token = get_timeframe_token(timeframe)
+    
+    # Add indicators to dataframe
+    df = add_all_indicators(df)
+    
+    # Drop rows with NaN values (from indicator calculations)
+    df = df.dropna()
+    
+    for idx, row in df.iterrows():
+        # Build sequence: symbol, timeframe, state, volume, indicators, action
+        sequence_parts = [
+            sym_token,
+            tf_token,
+            row['trend_token'],
+            row['volume_token'],
+            row['ha_token'],
+            row['sto_token'],
+            row['action_token']  # This is what we want the model to predict
+        ]
+        
+        sequence = " ".join(sequence_parts)
+        sequences.append(sequence)
+    
+    return sequences
+
+
+def split_sequences(
+    sequences: List[str],
+    train_ratio: float = 0.8,
+    val_ratio: float = 0.1
+) -> Tuple[List[str], List[str], List[str]]:
+    """
+    Split sequences into train, validation, and test sets.
+    
+    Args:
+        sequences: List of token sequences
+        train_ratio: Fraction for training
+        val_ratio: Fraction for validation
+        
+    Returns:
+        Tuple of (train_sequences, val_sequences, test_sequences)
+    """
+    n = len(sequences)
+    train_size = int(n * train_ratio)
+    val_size = int(n * val_ratio)
+    
+    # Chronological split (important for time series!)
+    train_sequences = sequences[:train_size]
+    val_sequences = sequences[train_size:train_size + val_size]
+    test_sequences = sequences[train_size + val_size:]
+    
+    return train_sequences, val_sequences, test_sequences
+
+
+def save_sequences(
+    sequences: List[str],
+    filepath: str
+) -> None:
+    """
+    Save sequences to a text file (one per line).
+    
+    Args:
+        sequences: List of token sequences
+        filepath: Output file path
+    """
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+    
+    with open(filepath, 'w') as f:
+        for seq in sequences:
+            f.write(seq + '\n')
+    
+    print(f"Saved {len(sequences)} sequences to {filepath}")
+
+
+def load_sequences(filepath: str) -> List[str]:
+    """
+    Load sequences from a text file.
+    
+    Args:
+        filepath: Input file path
+        
+    Returns:
+        List of token sequences
+    """
+    with open(filepath, 'r') as f:
+        sequences = [line.strip() for line in f if line.strip()]
+    
+    return sequences
+
+
+def analyze_sequences(sequences: List[str]) -> None:
+    """
+    Print statistics about generated sequences.
+    
+    Args:
+        sequences: List of token sequences
+    """
+    print(f"\n=== Sequence Analysis ===")
+    print(f"Total sequences: {len(sequences)}")
+    
+    if not sequences:
+        return
+    
+    # Analyze sequence lengths
+    lengths = [len(seq.split()) for seq in sequences]
+    print(f"Tokens per sequence: {lengths[0]} (all sequences should be same length)")
+    
+    # Count action token distribution
+    action_counts = {'BUY': 0, 'SELL': 0, 'HOLD': 0}
+    for seq in sequences:
+        tokens = seq.split()
+        action = tokens[-1]  # Last token is the action
+        if action in action_counts:
+            action_counts[action] += 1
+    
+    print(f"\nAction distribution:")
+    for action, count in action_counts.items():
+        pct = (count / len(sequences)) * 100
+        print(f"  {action}: {count} ({pct:.1f}%)")
+    
+    print(f"\nFirst 3 sequences:")
+    for seq in sequences[:3]:
+        print(f"  {seq}")
+    
+    print(f"\nLast 3 sequences:")
+    for seq in sequences[-3:]:
+        print(f"  {seq}")
+
+
+if __name__ == "__main__":
+    # Test the data generation pipeline
+    print("Testing data generation pipeline...\n")
+    
+    # Download data
+    df = download_price_data('SPY', start_date='2023-01-01', end_date='2024-01-01')
+    
+    # Generate sequences
+    sequences = generate_token_sequences(df, symbol='SPY', timeframe='DAILY')
+    
+    # Analyze
+    analyze_sequences(sequences)
+    
+    # Test split
+    train, val, test = split_sequences(sequences)
+    print(f"\nSplit sizes: Train={len(train)}, Val={len(val)}, Test={len(test)}")
