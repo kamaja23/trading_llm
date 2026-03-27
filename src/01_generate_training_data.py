@@ -8,6 +8,7 @@ token sequences suitable for training an LLM.
 
 import sys
 from pathlib import Path
+from collections import Counter
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
@@ -29,58 +30,81 @@ def main():
     print("STEP 1: GENERATE TRAINING DATA")
     print("=" * 60)
     
-    # Configuration
-    SYMBOL = 'SPY'
-    START_DATE = '2020-01-01'
-    END_DATE = '2024-01-01'
-    TIMEFRAME = 'DAILY'
+    # Configuration - multiple symbols and timeframes for more data
+    SYMBOLS = ['SPY', 'QQQ', 'DIA', 'IWM']
+    TIMEFRAMES = ['DAILY']
+    START_DATE = '2015-01-01'
+    END_DATE = '2025-01-01'
     
     # Paths
-    RAW_DATA_PATH = project_root / 'data' / 'raw' / f'{SYMBOL}_daily.csv'
     TRAIN_PATH = project_root / 'data' / 'train_test_split' / 'train.txt'
     VAL_PATH = project_root / 'data' / 'train_test_split' / 'val.txt'
     TEST_PATH = project_root / 'data' / 'train_test_split' / 'test.txt'
     ALL_SEQUENCES_PATH = project_root / 'data' / 'processed' / 'all_sequences.txt'
     
-    # Step 1: Download price data
-    print(f"\n1. Downloading {SYMBOL} data...")
-    df = download_price_data(
-        symbol=SYMBOL,
-        start_date=START_DATE,
-        end_date=END_DATE,
-        save_path=str(RAW_DATA_PATH)
-    )
+    all_sequences = []
     
-    # Step 2: Generate token sequences
-    print(f"\n2. Generating token sequences...")
-    sequences = generate_token_sequences(
-        df=df,
-        symbol=SYMBOL,
-        timeframe=TIMEFRAME
-    )
+    # Step 1: Download data for all symbols and generate sequences
+    print(f"\n1. Downloading data for {len(SYMBOLS)} symbols...")
     
-    # Step 3: Analyze sequences
-    print(f"\n3. Analyzing sequences...")
-    analyze_sequences(sequences)
+    for symbol in SYMBOLS:
+        print(f"\n   Processing {symbol}...")
+        
+        for timeframe in TIMEFRAMES:
+            raw_path = project_root / 'data' / 'raw' / f'{symbol}_{timeframe.lower()}.csv'
+            
+            df = download_price_data(
+                symbol=symbol,
+                start_date=START_DATE,
+                end_date=END_DATE,
+                save_path=str(raw_path)
+            )
+            
+            sequences = generate_token_sequences(
+                df=df,
+                symbol=symbol,
+                timeframe=timeframe
+            )
+            
+            print(f"      Generated {len(sequences)} sequences")
+            all_sequences.extend(sequences)
     
-    # Step 4: Save all sequences
-    print(f"\n4. Saving all sequences...")
-    save_sequences(sequences, str(ALL_SEQUENCES_PATH))
+    print(f"\n   Total sequences: {len(all_sequences)}")
     
-    # Step 5: Split into train/val/test
-    print(f"\n5. Splitting into train/val/test sets...")
-    train_sequences, val_sequences, test_sequences = split_sequences(
-        sequences,
-        train_ratio=0.7,  # 70% for training
-        val_ratio=0.15    # 15% for validation, 15% for test
-    )
+    # Step 2: Analyze sequences
+    print(f"\n2. Analyzing sequences...")
+    analyze_sequences(all_sequences)
+    
+    # Step 3: Save all sequences
+    print(f"\n3. Saving all sequences...")
+    save_sequences(all_sequences, str(ALL_SEQUENCES_PATH))
+    
+    # Step 4: Split into train/val/test (shuffled for better distribution)
+    print(f"\n4. Splitting into train/val/test sets...")
+    
+    import random
+    random.seed(42)
+    shuffled = all_sequences.copy()
+    random.shuffle(shuffled)
+    
+    n = len(shuffled)
+    train_size = int(n * 0.8)
+    val_size = int(n * 0.1)
+    
+    train_sequences = shuffled[:train_size]
+    val_sequences = shuffled[train_size:train_size + val_size]
+    test_sequences = shuffled[train_size + val_size:]
     
     print(f"   Train: {len(train_sequences)} sequences")
     print(f"   Val:   {len(val_sequences)} sequences")
     print(f"   Test:  {len(test_sequences)} sequences")
     
-    # Step 6: Save splits
-    print(f"\n6. Saving train/val/test files...")
+    # Check distribution
+    train_actions = Counter(s.split()[-1] for s in train_sequences)
+    print(f"\n   Training action distribution: {dict(train_actions)}")
+    
+    # Step 5: Save splits
+    print(f"\n5. Saving train/val/test files...")
     save_sequences(train_sequences, str(TRAIN_PATH))
     save_sequences(val_sequences, str(VAL_PATH))
     save_sequences(test_sequences, str(TEST_PATH))
@@ -89,7 +113,6 @@ def main():
     print("DATA GENERATION COMPLETE!")
     print("=" * 60)
     print(f"\nGenerated files:")
-    print(f"  - Raw data: {RAW_DATA_PATH}")
     print(f"  - All sequences: {ALL_SEQUENCES_PATH}")
     print(f"  - Train set: {TRAIN_PATH}")
     print(f"  - Val set: {VAL_PATH}")

@@ -136,7 +136,7 @@ def calculate_stochastic_signal(df: pd.DataFrame, k_window: int = 14, d_window: 
     )
 
 
-def calculate_action_token(df: pd.DataFrame, future_window: int = 5, threshold: float = 0.02) -> pd.Series:
+def calculate_action_token(df: pd.DataFrame, future_window: int = 10, threshold: float = 0.01) -> pd.Series:
     """
     Calculate action token based on future price movement.
     

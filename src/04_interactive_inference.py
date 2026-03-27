@@ -56,7 +56,7 @@ def predict_action(model, tokenizer, input_sequence, device, top_k=3):
         List of (token, probability) tuples
     """
     # Tokenize input
-    inputs = tokenizer(input_sequence, return_tensors="pt")
+    inputs = tokenizer(input_sequence + " ", return_tensors="pt")
     inputs = {k: v.to(device) for k, v in inputs.items()}
     
     # Generate predictions

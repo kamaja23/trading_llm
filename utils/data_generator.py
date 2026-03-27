@@ -135,7 +135,6 @@ def generate_token_sequences(
     df = df.dropna()
     
     for idx, row in df.iterrows():
-        # Build sequence: symbol, timeframe, state, volume, indicators, action
         sequence_parts = [
             sym_token,
             tf_token,
@@ -143,10 +142,10 @@ def generate_token_sequences(
             row['volume_token'],
             row['ha_token'],
             row['sto_token'],
-            row['action_token']  # This is what we want the model to predict
         ]
         
-        sequence = " ".join(sequence_parts)
+        # Join with spaces, then append action WITHOUT space
+        sequence = " ".join(sequence_parts) + " " + row['action_token']
         sequences.append(sequence)
     
     return sequences

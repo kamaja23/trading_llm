@@ -62,41 +62,59 @@ def prepare_model(tokenizer):
     
     # Resize model embeddings to account for new tokens
     model.resize_token_embeddings(len(tokenizer))
-    print(f"Resized embeddings to {len(tokenizer)} tokens")
+    
+    # Fix lm_head dimension mismatch (resize_token_embeddings doesn't always update lm_head)
+    if model.lm_head.weight.shape[0] != len(tokenizer):
+        print("Fixing lm_head dimension mismatch...")
+        model.lm_head = torch.nn.Linear(
+            model.lm_head.in_features, 
+            len(tokenizer), 
+            bias=model.lm_head.bias is not None
+        ).to(model.device)
+    
+    print(f"Resized embeddings and lm_head to {len(tokenizer)} tokens")
     
     return model
 
 
 def create_dataset_from_file(file_path, tokenizer, block_size=128):
     """
-    Create a Dataset from token sequences file (modern approach).
-    
-    Args:
-        file_path: Path to text file with sequences
-        tokenizer: Configured tokenizer
-        block_size: Maximum sequence length
-        
-    Returns:
-        Dataset object
+    Create a Dataset from token sequences file.
+    Only uses input tokens (excluding action) for loss calculation.
     """
-    # Load sequences from file
     with open(file_path, 'r') as f:
         lines = [line.strip() for line in f if line.strip()]
     
-    # Tokenize all sequences
     def tokenize_function(examples):
-        return tokenizer(
-            examples['text'],
+        texts = examples['text']
+        input_texts = []
+        labels = []
+        
+        for text in texts:
+            tokens = text.split()
+            input_text = ' '.join(tokens[:-1])
+            label = tokens[-1]
+            input_texts.append(input_text)
+            labels.append(label)
+        
+        inputs = tokenizer(
+            input_texts,
             truncation=True,
-            max_length=block_size,
+            max_length=block_size - 1,
             padding='max_length',
             return_tensors=None
         )
+        
+        labels_enc = tokenizer(
+            labels,
+            add_special_tokens=False,
+            return_tensors=None
+        )
+        
+        inputs['labels'] = labels_enc['input_ids']
+        return inputs
     
-    # Create dataset
     dataset = Dataset.from_dict({'text': lines})
-    
-    # Tokenize
     tokenized_dataset = dataset.map(
         tokenize_function,
         batched=True,
@@ -107,6 +125,39 @@ def create_dataset_from_file(file_path, tokenizer, block_size=128):
     return tokenized_dataset
 
 
+class ClassificationTrainer(Trainer):
+    """Custom trainer that computes loss only on action tokens."""
+    
+    def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None, **kwargs):
+        labels = inputs.get("labels")
+        
+        if labels is None:
+            return super().compute_loss(model, inputs, return_outputs=return_outputs, **kwargs)
+        
+        outputs = model(**inputs)
+        logits = outputs.logits
+        
+        pad_token_id = self.data_collator.tokenizer.pad_token_id
+        
+        shifted_logits = logits[:, :-1].contiguous()
+        shifted_labels = labels[:, 1:].contiguous()
+        
+        flat_logits = shifted_logits.view(-1, shifted_logits.size(-1))
+        flat_labels = shifted_labels.view(-1)
+        
+        valid_mask = (flat_labels != -100) & (flat_labels != pad_token_id)
+        if valid_mask.sum() == 0:
+            return torch.tensor(0.0, device=logits.device)
+        
+        flat_logits = flat_logits[valid_mask]
+        flat_labels = flat_labels[valid_mask]
+        
+        loss_fct = torch.nn.CrossEntropyLoss()
+        loss = loss_fct(flat_logits, flat_labels)
+        
+        return (loss, outputs) if return_outputs else loss
+
+
 def main():
     """Train the trading LLM."""
     
@@ -114,18 +165,15 @@ def main():
     print("STEP 2: TRAIN THE MODEL")
     print("=" * 60)
     
-    # Paths
     TRAIN_PATH = project_root / 'data' / 'train_test_split' / 'train.txt'
     VAL_PATH = project_root / 'data' / 'train_test_split' / 'val.txt'
     MODEL_OUTPUT_DIR = project_root / 'models' / 'trading_llm'
     
-    # Check if data exists
     if not TRAIN_PATH.exists():
         print(f"\nERROR: Training data not found at {TRAIN_PATH}")
         print("Please run 01_generate_training_data.py first")
         sys.exit(1)
     
-    # Try to create model directory, provide helpful error if permissions fail
     try:
         MODEL_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     except PermissionError:
@@ -136,10 +184,9 @@ def main():
         print(f"  3. Run script with: sudo python src/02_train_model.py (not recommended)")
         sys.exit(1)
     
-    # Configuration
-    BLOCK_SIZE = 128  # Max sequence length (our sequences are short, ~7 tokens)
-    BATCH_SIZE = 8
-    NUM_EPOCHS = 3
+    BLOCK_SIZE = 128
+    BATCH_SIZE = 16
+    NUM_EPOCHS = 30
     LEARNING_RATE = 5e-5
     
     # Use GPU if available
@@ -193,7 +240,7 @@ def main():
     
     # Step 6: Create trainer
     print("\n5. Creating trainer...")
-    trainer = Trainer(
+    trainer = ClassificationTrainer(
         model=model,
         args=training_args,
         data_collator=data_collator,
