@@ -30,12 +30,36 @@ def check_package(package_name, import_name=None):
         return False
 
 def check_gpu():
-    """Check if GPU is available"""
+    """Check if GPU is available and verify RTX 2070 compatibility"""
     try:
         import torch
         if torch.cuda.is_available():
             gpu_name = torch.cuda.get_device_name(0)
             print(f"✅ GPU available: {gpu_name}")
+            
+            # Check for RTX 2070 specific optimizations
+            gpu_props = torch.cuda.get_device_properties(0)
+            print(f"   VRAM: {gpu_props.total_mem / 1024**3:.1f} GB")
+            print(f"   Compute Capability: {gpu_props.major}.{gpu_props.minor}")
+            
+            # RTX 2070 has compute capability 7.5
+            if gpu_props.major == 7 and gpu_props.minor == 5:
+                print("   ✅ RTX 2070 detected - optimized settings enabled (FP16)")
+            elif gpu_props.major >= 7:
+                print(f"   ✅ GPU supports mixed precision (FP16)")
+            else:
+                print("   ⚠️  GPU may not support FP16 efficiently")
+            
+            # Check CUDA version
+            print(f"   CUDA Version: {torch.version.cuda}")
+            
+            # Recommend CUDA 11.8 for RTX 2070
+            if torch.version.cuda and "11.8" in torch.version.cuda:
+                print("   ✅ CUDA 11.8 detected (recommended for RTX 2070)")
+            else:
+                print("   ⚠️  For RTX 2070, CUDA 11.8 is recommended")
+                print("      Install with: pip install torch --index-url https://download.pytorch.org/whl/cu118")
+            
             return True
         else:
             print("⚠️  No GPU detected (CPU will be used, training will be slower)")

@@ -23,12 +23,12 @@
 **4. GPU Support**
 - Confirmed NVIDIA CUDA support (RTX 2070, RTX 3060, etc.)
 - Updated requirements for CUDA PyTorch installation
-- Kept AMD ROCm files for backward compatibility
+- Enabled FP16 mixed precision for RTX 2070
 
 ### Changed
 
 - **requirements.txt**: Added `accelerate>=1.1.0` for transformers compatibility
-- **src/02_train_model.py**: Updated to use modern `datasets` API
+- **src/02_train_model.py**: Updated to use modern `datasets` API, enabled FP16
 - **utils/indicators.py**: Fixed NaN handling in shift operations
 - **.gitignore**: Comprehensive exclusion of large model files
 
@@ -53,7 +53,6 @@
 - Token-based trading language (30 custom tokens)
 - Fine-tuned distilgpt2 model (82M parameters)
 - Complete training pipeline (data → train → test → inference)
-- Docker support (CPU, NVIDIA CUDA, AMD ROCm)
 - Offline capability with sample SPY data
 - Comprehensive documentation (4 guides, 2000+ lines)
 
@@ -62,7 +61,6 @@
 - **Data Pipeline**: yfinance integration, technical indicators
 - **Training**: Hugging Face Transformers, PyTorch
 - **Inference**: Interactive prediction mode
-- **Docker**: Multi-platform GPU support
 - **Documentation**: Complete guides and examples
 
 ### Metrics

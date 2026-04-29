@@ -1,85 +1,50 @@
-# Makefile for Trading LLM Docker operations
-.PHONY: help build up down shell train test clean logs
+# Makefile for Trading LLM operations
+.PHONY: help install verify data train test clean
 
 # Default target
 help:
-	@echo "Trading LLM Docker Commands:"
+	@echo "Trading LLM Commands:"
 	@echo ""
-	@echo "  make build       - Build Docker image"
-	@echo "  make up          - Start containers in background"
-	@echo "  make down        - Stop and remove containers"
-	@echo "  make shell       - Access container shell"
-	@echo "  make train       - Run complete training pipeline"
-	@echo "  make test        - Run tests"
+	@echo "  make install     - Install dependencies (RTX 2070 CUDA)"
+	@echo "  make verify      - Verify setup and GPU detection"
 	@echo "  make data        - Generate training data"
-	@echo "  make gpu-train   - Train with GPU (requires nvidia-docker)"
-	@echo "  make jupyter     - Start Jupyter notebook server"
-	@echo "  make logs        - View container logs"
-	@echo "  make clean       - Remove containers and volumes"
-	@echo "  make rebuild     - Rebuild without cache"
+	@echo "  make train       - Run complete training pipeline"
+	@echo "  make test        - Run model testing"
+	@echo "  make interactive - Start interactive inference"
+	@echo "  make clean       - Remove generated data and models"
 	@echo ""
 
-# Build the Docker image
-build:
-	docker-compose build
+# Install dependencies with CUDA support for RTX 2070
+install:
+	pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+	pip install -r requirements.txt
 
-# Start containers
-up:
-	docker-compose up -d trading-llm
-
-# Stop containers
-down:
-	docker-compose down
-
-# Access container shell
-shell:
-	docker-compose exec trading-llm bash
+# Verify setup
+verify:
+	python verify_setup.py
 
 # Generate training data
 data:
-	docker-compose run --rm trading-llm python src/01_generate_training_data.py
+	python src/01_generate_training_data.py
 
 # Train model
-train:
-	docker-compose run --rm trading-llm bash -c " \
-		python src/01_generate_training_data.py && \
-		python src/02_train_model.py && \
-		python src/03_test_model.py"
-
-# GPU training
-gpu-train:
-	docker-compose --profile gpu run --rm trading-llm-gpu bash -c " \
-		python src/01_generate_training_data.py && \
-		python src/02_train_model.py && \
-		python src/03_test_model.py"
+train: data
+	python src/02_train_model.py
 
 # Run tests
 test:
-	docker-compose run --rm trading-llm python verify_setup.py
+	python src/03_test_model.py
 
-# Start Jupyter
-jupyter:
-	@echo "Starting Jupyter at http://localhost:8888"
-	docker-compose --profile jupyter up jupyter
+# Interactive inference
+interactive:
+	python src/04_interactive_inference.py
 
-# View logs
-logs:
-	docker-compose logs -f trading-llm
-
-# Clean up everything
+# Clean up generated files
 clean:
-	docker-compose down -v
-	docker system prune -f
+	rm -rf data/raw/* data/processed/* data/train_test_split/*
+	rm -rf models/trading_llm/*
+	@echo "Cleaned data and model files"
 
-# Rebuild without cache
-rebuild:
-	docker-compose build --no-cache
-
-# Quick start (build + run pipeline)
-quickstart: build train
-	@echo "Complete pipeline finished!"
-
-# Development mode (build + shell)
-dev: build
-	docker-compose up -d trading-llm
-	docker-compose exec trading-llm bash
+# Full pipeline
+pipeline: data train test
+	@echo "Full pipeline complete!"

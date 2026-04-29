@@ -236,6 +236,7 @@ def main():
         load_best_model_at_end=True,
         metric_for_best_model="eval_loss",
         report_to="none",  # Disable wandb/tensorboard
+        fp16=True,  # Enable mixed precision for RTX 2070 (compute capability 7.5+)
     )
     
     # Step 6: Create trainer

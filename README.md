@@ -71,26 +71,6 @@ python -c "import torch; print(f'CUDA: {torch.cuda.is_available()}')"
 
 See [RTX2070_SETUP.md](RTX2070_SETUP.md) for detailed setup guide.
 
-### Option 1: Local Installation
-
-```bash
-pip install -r requirements.txt
-```
-
-### Option 2: Docker (Recommended for Production)
-
-```bash
-# Quick start with Docker Compose
-docker-compose up -d trading-llm
-docker-compose exec trading-llm bash
-
-# Or using Makefile
-make build
-make train
-
-# See DOCKER_GUIDE.md for complete documentation
-```
-
 ## Usage
 
 ### Step 1: Generate Training Data
