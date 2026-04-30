@@ -5,6 +5,9 @@ models/trading_llm/*.safetensors
 models/trading_llm/*.pt
 models/trading_llm/*.bin
 models/trading_llm/logs/
+models/synthetic_verification/checkpoint-*/
+models/synthetic_verification/*.safetensors
+models/synthetic_verification/*.pt
 
 # Training outputs
 *.pth

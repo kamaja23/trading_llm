@@ -131,16 +131,6 @@ python -c "import torch; print(torch.cuda.is_available())"
 # Should be True
 ```
 
-## Docker Alternative (Optional)
-
-```bash
-# Build Docker image
-docker-compose build trading-llm-gpu
-
-# Run training in Docker
-docker-compose run --rm trading-llm-gpu python src/02_train_model.py
-```
-
 ## File Structure
 
 ```
@@ -213,7 +203,6 @@ nvidia-smi
 ## Resources
 
 - **Full Documentation**: `IMPLEMENTATION_GUIDE.md`
-- **Docker Guide**: `DOCKER_GUIDE.md`
 - **Troubleshooting**: `NETWORK_TROUBLESHOOTING.md`
 - **Project Details**: `PROJECT_SUMMARY.md`
 

@@ -13,23 +13,18 @@
 - [x] utils/__init__.py - Package initialization
 - [x] verify_setup.py - Environment verification
 
-### Documentation (10 guides)
+### Documentation (8 guides)
 - [x] README.md - Project overview with v1.1 updates
 - [x] CHANGELOG.md - Version history and bug fixes
 - [x] RTX2070_SETUP.md - Quick setup for your GPU
 - [x] GETTING_STARTED.md - 5-minute quick start
 - [x] IMPLEMENTATION_GUIDE.md - Complete technical guide
 - [x] PROJECT_SUMMARY.md - Comprehensive documentation
-- [x] DOCKER_GUIDE.md - Docker deployment guide
-- [x] DOCKER_QUICKSTART.md - Docker quick reference
 - [x] NETWORK_TROUBLESHOOTING.md - Offline mode guide
 
 ### Configuration Files
 - [x] requirements.txt - Python dependencies with accelerate
 - [x] .gitignore - Comprehensive exclusions for model files
-- [x] Dockerfile - NVIDIA GPU container
-- [x] docker-compose.yml - Container orchestration
-- [x] .dockerignore - Build optimization
 - [x] Makefile - Convenient commands
 
 ### Data
@@ -79,7 +74,6 @@
 ### AMD GPUs (Legacy)
 - RX 7800 XT, 7900 XT/XTX
 - RX 6800 XT, 6900 XT
-- Files: Dockerfile.rocm, docker-compose.rocm.yml, Makefile.rocm
 - Note: Not included in v1.1 package (available separately)
 
 ### CPU Only
@@ -98,13 +92,11 @@ trading_llm_final/
 │   ├── processed/           # Generated during training
 │   └── train_test_split/    # Generated during training
 ├── models/                  # Model checkpoints (generated)
-├── *.md                     # Documentation (10 guides)
+├── *.md                     # Documentation (8 guides)
 ├── requirements.txt         # Dependencies
 ├── .gitignore              # Git exclusions
-├── Dockerfile              # Container definition
-├── docker-compose.yml      # Container orchestration
-├── Makefile               # Convenient commands
-└── verify_setup.py        # Setup verification
+├── Makefile                # Convenient commands
+└── verify_setup.py         # Setup verification
 ```
 
 ## File Sizes
@@ -144,11 +136,11 @@ After extracting, verify you have:
 
 - [ ] All 4 source scripts in `src/`
 - [ ] All 4 utility modules in `utils/`
-- [ ] 10 documentation markdown files
+- [ ] 8 documentation markdown files
 - [ ] requirements.txt with accelerate
 - [ ] .gitignore with model exclusions
 - [ ] SPY_sample_data.csv (130KB)
-- [ ] Docker files (Dockerfile, docker-compose.yml, Makefile)
+- [ ] Makefile with convenient commands
 - [ ] verify_setup.py
 
 ## Quick Start Verification
