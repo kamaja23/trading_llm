@@ -141,6 +141,7 @@ python src/02_train_model.py
 
 **Expected runtime:**
 - CPU: 1-2 hours
+- GPU (e.g., RX 7800 XT with ROCm): 15-20 minutes
 - GPU (e.g., RTX 3060): 15-30 minutes
 
 **What to expect during training:**
@@ -290,7 +291,7 @@ hourly_seq = generate_token_sequences(df_hourly, 'SPY', '60MIN')
 ### Memory Optimization
 - Use gradient checkpointing
 - Reduce max sequence length
-- Use fp16 training (if GPU supports)
+- Use fp16 training (supported on AMD ROCm and NVIDIA CUDA)
 
 ### Faster Inference
 - Batch predictions together
@@ -430,7 +431,7 @@ This proves the concept is technically feasible. The gap between this and a prof
 **Estimated total time investment:**
 - Setup: 30 minutes
 - Data generation: 2 minutes
-- Training: 1-2 hours (CPU) or 20 minutes (GPU)
+- Training: 1-2 hours (CPU) or 15-20 minutes (GPU - RX 7800 XT)
 - Testing: 5 minutes
 - Experimentation: Ongoing
 

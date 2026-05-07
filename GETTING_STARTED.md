@@ -51,7 +51,7 @@ python src/01_generate_training_data.py
 ```
 Downloads SPY stock data and converts it to token sequences.
 
-### Step 2: Train the Model (1-2 hours on CPU, 20 min on GPU)
+### Step 2: Train the Model (1-2 hours on CPU, 15-20 min on RX 7800 XT GPU)
 ```bash
 python src/02_train_model.py
 ```
@@ -113,8 +113,9 @@ trading_llm_hello_world/
 pip install -r requirements.txt
 ```
 
-### "CUDA out of memory" (if using GPU)
+### "CUDA out of memory" (if using GPU with ROCm or CUDA)
 Edit `src/02_train_model.py`, reduce `BATCH_SIZE` from 8 to 4.
+With RX 7800 XT (16GB VRAM), you can try increasing to 32.
 
 ### Training takes forever
 - Normal on CPU (1-2 hours)
@@ -161,7 +162,7 @@ After completing the Hello World:
    - PROJECT_SUMMARY.md (complete overview)
 
 2. **Common questions:**
-   - "How long does training take?" → 1-2 hours (CPU), 20 min (GPU)
+   - "How long does training take?" → 1-2 hours (CPU), 15-20 min (RX 7800 XT GPU)
    - "Do I need a GPU?" → No, but it's faster
    - "Can I use this for real trading?" → Not yet, extensive testing needed
    - "What accuracy should I expect?" → 40-60% (vs 33% random)

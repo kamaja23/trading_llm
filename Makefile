@@ -5,7 +5,7 @@
 help:
 	@echo "Trading LLM Commands:"
 	@echo ""
-	@echo "  make install     - Install dependencies (RTX 2070 CUDA)"
+	@echo "  make install     - Install dependencies (RX 7800 XT ROCm)"
 	@echo "  make verify      - Verify setup and GPU detection"
 	@echo "  make data        - Generate training data"
 	@echo "  make train       - Run complete training pipeline"
@@ -14,9 +14,9 @@ help:
 	@echo "  make clean       - Remove generated data and models"
 	@echo ""
 
-# Install dependencies with CUDA support for RTX 2070
+# Install dependencies with ROCm support for RX 7800 XT
 install:
-	pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+	pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm5.7
 	pip install -r requirements.txt
 
 # Verify setup

@@ -16,7 +16,7 @@
 ### Documentation (8 guides)
 - [x] README.md - Project overview with v1.1 updates
 - [x] CHANGELOG.md - Version history and bug fixes
-- [x] RTX2070_SETUP.md - Quick setup for your GPU
+- [x] RX7800XT_SETUP.md - Quick setup for AMD GPU with ROCm
 - [x] GETTING_STARTED.md - 5-minute quick start
 - [x] IMPLEMENTATION_GUIDE.md - Complete technical guide
 - [x] PROJECT_SUMMARY.md - Comprehensive documentation
@@ -65,16 +65,15 @@
 
 ## Hardware Support
 
-### NVIDIA GPUs (Primary)
-- RTX 2070 (8GB VRAM) - Tested and optimized
-- RTX 3060, 3070, 3080, 3090
+### AMD GPUs (Primary - v1.2)
+- RX 7800 XT (16GB VRAM) - Tested and optimized with ROCm
+- RX 7900 XT/XTX, 6800 XT, 6900 XT
+- Any AMD GPU with ROCm 5.7+ support
+
+### NVIDIA GPUs (Secondary)
+- RTX 2070, 3060, 3070, 3080, 3090
 - RTX 4060, 4070, 4080, 4090
 - Any CUDA-capable GPU
-
-### AMD GPUs (Legacy)
-- RX 7800 XT, 7900 XT/XTX
-- RX 6800 XT, 6900 XT
-- Note: Not included in v1.1 package (available separately)
 
 ### CPU Only
 - Fully supported
@@ -125,8 +124,8 @@ Models are generated during training and should not be committed to git.
 
 ### System Requirements
 - Python 3.8+
-- NVIDIA drivers (for GPU)
-- CUDA 11.8 (for GPU)
+- AMD ROCm 5.7+ (for AMD GPU)
+- NVIDIA drivers + CUDA 11.8+ (for NVIDIA GPU)
 - 8GB RAM minimum
 - 5GB disk space
 

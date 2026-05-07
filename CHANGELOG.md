@@ -1,6 +1,6 @@
 # Changelog
 
-## Version 1.1 (Current) - Bug Fixes & NVIDIA GPU Support
+## Version 1.2 (Current) - AMD RX 7800 XT ROCm Support
 
 ### Fixed Issues
 
@@ -21,9 +21,10 @@
 - Created guide for clean repository management
 
 **4. GPU Support**
-- Confirmed NVIDIA CUDA support (RTX 2070, RTX 3060, etc.)
-- Updated requirements for CUDA PyTorch installation
-- Enabled FP16 mixed precision for RTX 2070
+- Added AMD ROCm support (RX 7800 XT, 7900 XT/XTX, etc.)
+- Updated requirements for ROCm PyTorch installation
+- Enabled FP16 mixed precision for AMD GPUs
+- Maintains backward compatibility with NVIDIA CUDA
 
 ### Changed
 
@@ -40,8 +41,8 @@
 
 ### Performance
 
-- Training time on RTX 2070: ~20-25 minutes (8GB VRAM)
 - Training time on RX 7800 XT: ~15-20 minutes (16GB VRAM)
+- Training time on RTX 2070: ~20-25 minutes (8GB VRAM)
 - CPU training time: ~90-120 minutes
 
 ---
@@ -102,8 +103,10 @@ cd trading_llm
 python -m venv .venv
 source .venv/bin/activate
 
-# 3. Install PyTorch with CUDA (for NVIDIA GPUs)
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+# 3. Install PyTorch with ROCm (for AMD GPUs)
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm5.7
+# For NVIDIA GPUs, use:
+# pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
 
 # 4. Install other dependencies
 pip install -r requirements.txt

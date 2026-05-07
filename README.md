@@ -1,6 +1,6 @@
 # Trading LLM Hello World
 
-**Version 1.1** - Bug fixes and NVIDIA GPU optimization
+**Version 1.2** - AMD RX 7800 XT ROCm support
 
 A proof-of-concept implementation demonstrating that a small LLM can learn to predict trading actions (BUY/SELL/HOLD) from tokenized market data sequences.
 
@@ -10,7 +10,7 @@ A proof-of-concept implementation demonstrating that a small LLM can learn to pr
 - ✅ **Fixed**: Deprecated transformers API compatibility
 - ✅ **Added**: Accelerate library support for modern training
 - ✅ **Added**: Comprehensive .gitignore for model files
-- ✅ **Optimized**: NVIDIA RTX 2070 support with FP16 mixed precision
+- ✅ **Optimized**: AMD RX 7800 XT support with ROCm and FP16 mixed precision
 - ✅ **Improved**: Better error messages and debugging
 
 See [CHANGELOG.md](CHANGELOG.md) for complete details.
@@ -56,20 +56,20 @@ Example sequence:
 
 ## Installation
 
-### Quick Start (NVIDIA RTX 2070)
+### Quick Start (AMD RX 7800 XT with ROCm)
 
 ```bash
-# 1. Install PyTorch with CUDA
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+# 1. Install PyTorch with ROCm
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm5.7
 
 # 2. Install dependencies
 pip install -r requirements.txt
 
 # 3. Verify GPU
-python -c "import torch; print(f'CUDA: {torch.cuda.is_available()}')"
+python -c "import torch; print(f'ROCm: {torch.cuda.is_available()}')"
 ```
 
-See [RTX2070_SETUP.md](RTX2070_SETUP.md) for detailed setup guide.
+See [RX7800XT_SETUP.md](RX7800XT_SETUP.md) for detailed setup guide.
 
 ## Usage
 

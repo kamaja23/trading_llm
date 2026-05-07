@@ -91,8 +91,8 @@ Market data is converted into discrete tokens representing different aspects of 
 - **Base Model:** distilgpt2 (82M parameters)
 - **Training Method:** Fine-tuning via causal language modeling
 - **Objective:** Predict next token (action) given context (market state)
-- **Hardware:** Runs on CPU or GPU
-- **Training Time:** 1-2 hours (CPU), 15-30 minutes (GPU)
+- **Hardware:** Runs on CPU, AMD GPU (ROCm), or NVIDIA GPU (CUDA)
+- **Training Time:** 1-2 hours (CPU), 15-20 minutes (RX 7800 XT GPU)
 
 ### Data Pipeline
 
@@ -264,7 +264,7 @@ The same approach adapts naturally to prediction markets:
 - Storage: 5GB
 
 **Recommended:**
-- CPU: 8+ cores or any CUDA GPU
+- CPU: 8+ cores or AMD GPU with ROCm (RX 7800 XT) or NVIDIA CUDA GPU
 - RAM: 16GB
 - Storage: 10GB
 
@@ -278,7 +278,7 @@ The same approach adapts naturally to prediction markets:
 
 - **Setup:** 30 minutes
 - **Data generation:** 2 minutes
-- **Training:** 1-2 hours (CPU) or 20 minutes (GPU)
+- **Training:** 1-2 hours (CPU) or 15-20 minutes (RX 7800 XT GPU)
 - **Testing:** 5 minutes
 - **Learning/experimentation:** Ongoing
 
@@ -287,7 +287,7 @@ The same approach adapts naturally to prediction markets:
 - **Development:** $0 (all open-source)
 - **Data:** $0 (yfinance is free)
 - **Compute:** $0 (runs locally)
-- **Optional GPU acceleration:** $0.50-1/hour (Google Colab Pro)
+- **Optional GPU acceleration:** $0.50-1/hour (Google Colab Pro) or use local AMD RX 7800 XT with ROCm (free)
 
 **Total Cost:** Effectively $0 for Hello World
 
