@@ -17,7 +17,6 @@ sys.path.insert(0, str(project_root))
 from transformers import (
     GPT2Tokenizer,
     GPT2LMHeadModel,
-    DataCollatorForLanguageModeling,
     Trainer,
     TrainingArguments
 )
@@ -47,12 +46,13 @@ def prepare_tokenizer():
     return tokenizer
 
 
-def prepare_model(tokenizer):
+def prepare_model(tokenizer, freeze_base=True):
     """
     Load distilgpt2 model and resize embeddings for new tokens.
     
     Args:
         tokenizer: Configured tokenizer with custom tokens
+        freeze_base: If True, freeze base transformer and only train new embeddings
         
     Returns:
         Model ready for fine-tuning
@@ -66,95 +66,121 @@ def prepare_model(tokenizer):
     # Fix lm_head dimension mismatch (resize_token_embeddings doesn't always update lm_head)
     if model.lm_head.weight.shape[0] != len(tokenizer):
         print("Fixing lm_head dimension mismatch...")
+        old_weight = model.lm_head.weight.data.clone()
         model.lm_head = torch.nn.Linear(
             model.lm_head.in_features, 
             len(tokenizer), 
             bias=model.lm_head.bias is not None
-        ).to(model.device)
+        )
+        # Preserve old weights for existing tokens
+        old_vocab_size = old_weight.shape[0]
+        model.lm_head.weight.data[:old_vocab_size] = old_weight.to(model.lm_head.weight.device)
+    
+    if freeze_base:
+        print("Freezing transformer layers (training embeddings + lm_head)...")
+        for name, param in model.transformer.named_parameters():
+            if 'h.' in name:  # Freeze the actual transformer layers only
+                param.requires_grad = False
     
     print(f"Resized embeddings and lm_head to {len(tokenizer)} tokens")
+    if freeze_base:
+        trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        print(f"Trainable parameters: {trainable:,} (out of {sum(p.numel() for p in model.parameters()):,})")
     
     return model
 
 
 def create_dataset_from_file(file_path, tokenizer, block_size=128):
     """
-    Create a Dataset from token sequences file.
-    Only uses input tokens (excluding action) for loss calculation.
+    Create a Dataset from token sequences.
+    Labels have -100 on all positions except the action token position,
+    so loss only propagates through the final action prediction.
     """
     with open(file_path, 'r') as f:
         lines = [line.strip() for line in f if line.strip()]
-    
+
     def tokenize_function(examples):
         texts = examples['text']
-        input_texts = []
-        labels = []
-        
+        all_input_ids = []
+        all_labels = []
+
         for text in texts:
             tokens = text.split()
-            input_text = ' '.join(tokens[:-1])
-            label = tokens[-1]
-            input_texts.append(input_text)
-            labels.append(label)
-        
-        inputs = tokenizer(
-            input_texts,
-            truncation=True,
-            max_length=block_size - 1,
-            padding='max_length',
-            return_tensors=None
-        )
-        
-        labels_enc = tokenizer(
-            labels,
-            add_special_tokens=False,
-            return_tensors=None
-        )
-        
-        inputs['labels'] = labels_enc['input_ids']
-        return inputs
-    
+            full_text = ' '.join(tokens)
+
+            encoded = tokenizer(
+                full_text,
+                truncation=True,
+                max_length=block_size,
+                add_special_tokens=False,
+            )
+            ids = encoded['input_ids']
+
+            input_ids = ids
+            labels = [-100] * (len(ids) - 1) + [ids[-1]]
+
+            padding_len = block_size - len(input_ids)
+            input_ids = input_ids + [tokenizer.pad_token_id] * padding_len
+            labels = labels + [-100] * padding_len
+
+            all_input_ids.append(input_ids)
+            all_labels.append(labels)
+
+        return {
+            'input_ids': all_input_ids,
+            'labels': all_labels,
+            'attention_mask': [
+                [1] * min(len(t.split()), block_size) + [0] * max(0, block_size - len(t.split()))
+                for t in texts
+            ],
+        }
+
     dataset = Dataset.from_dict({'text': lines})
     tokenized_dataset = dataset.map(
         tokenize_function,
         batched=True,
         remove_columns=dataset.column_names,
-        desc="Tokenizing sequences"
+        desc="Tokenizing sequences",
     )
-    
+
     return tokenized_dataset
+
+
+class ActionOnlyDataCollator:
+    """Simple collator that pads without overwriting labels."""
+
+    def __init__(self, tokenizer):
+        self.tokenizer = tokenizer
+
+    def __call__(self, features):
+        batch = self.tokenizer.pad(
+            features,
+            return_tensors="pt",
+        )
+        return batch
 
 
 class ClassificationTrainer(Trainer):
     """Custom trainer that computes loss only on action tokens."""
-    
+
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None, **kwargs):
         labels = inputs.get("labels")
-        
+
         if labels is None:
             return super().compute_loss(model, inputs, return_outputs=return_outputs, **kwargs)
-        
+
         outputs = model(**inputs)
         logits = outputs.logits
-        
-        pad_token_id = self.data_collator.tokenizer.pad_token_id
-        
-        shifted_logits = logits[:, :-1].contiguous()
-        shifted_labels = labels[:, 1:].contiguous()
-        
-        flat_logits = shifted_logits.view(-1, shifted_logits.size(-1))
-        flat_labels = shifted_labels.view(-1)
-        
-        valid_mask = (flat_labels != -100) & (flat_labels != pad_token_id)
-        if valid_mask.sum() == 0:
-            return torch.tensor(0.0, device=logits.device)
-        
-        flat_logits = flat_logits[valid_mask]
-        flat_labels = flat_labels[valid_mask]
-        
+
+        shift_logits = logits[..., :-1, :].contiguous()
+        shift_labels = labels[..., 1:].contiguous()
+
         loss_fct = torch.nn.CrossEntropyLoss()
-        loss = loss_fct(flat_logits, flat_labels)
-        
+        loss = loss_fct(
+            shift_logits.view(-1, shift_logits.size(-1)),
+            shift_labels.view(-1),
+        )
+
         return (loss, outputs) if return_outputs else loss
 
 
@@ -186,8 +212,8 @@ def main():
     
     BLOCK_SIZE = 128
     BATCH_SIZE = 16
-    NUM_EPOCHS = 30
-    LEARNING_RATE = 5e-5
+    NUM_EPOCHS = 150
+    LEARNING_RATE = 1e-3
     
     # Use GPU if available
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -201,7 +227,7 @@ def main():
     
     # Step 2: Prepare model
     print("\n2. Preparing model...")
-    model = prepare_model(tokenizer)
+    model = prepare_model(tokenizer, freeze_base=True)
     model.to(device)
     
     # Step 3: Create datasets
@@ -212,11 +238,8 @@ def main():
     print(f"   Train dataset size: {len(train_dataset)} examples")
     print(f"   Val dataset size: {len(val_dataset)} examples")
     
-    # Step 4: Prepare data collator
-    data_collator = DataCollatorForLanguageModeling(
-        tokenizer=tokenizer,
-        mlm=False  # We're doing causal language modeling, not masked LM
-    )
+    # Step 4: Prepare data collator (preserves action-only labels)
+    data_collator = ActionOnlyDataCollator(tokenizer=tokenizer)
     
     # Step 5: Configure training
     print("\n4. Configuring training...")

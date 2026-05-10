@@ -8,6 +8,7 @@ models/trading_llm/logs/
 models/synthetic_verification/checkpoint-*/
 models/synthetic_verification/*.safetensors
 models/synthetic_verification/*.pt
+models/trading_llm_bak/
 
 # Training outputs
 *.pth
@@ -62,6 +63,9 @@ ehthumbs.db
 # Logs
 *.log
 logs/
+
+# Secrets
+.env
 
 # Temporary files
 *.tmp

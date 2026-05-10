@@ -67,7 +67,6 @@ def main():
         ("datasets", "datasets"),
         ("numpy", "numpy"),
         ("pandas", "pandas"),
-        ("yfinance", "yfinance"),
         ("ta", "ta"),
         ("tqdm", "tqdm"),
     ]

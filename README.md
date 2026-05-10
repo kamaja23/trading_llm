@@ -27,7 +27,7 @@ Demonstrate technical feasibility of using an LLM to learn trading patterns by:
 ## Architecture Overview
 
 ```
-Historical Price Data (SPY via yfinance)
+Historical Price Data (SPY via configured market data provider)
     ↓
 Token Generator (converts OHLCV → trading language tokens)
     ↓
@@ -78,6 +78,16 @@ See [RX7800XT_SETUP.md](RX7800XT_SETUP.md) for detailed setup guide.
 python src/01_generate_training_data.py
 ```
 This downloads SPY historical data and generates token sequences.
+Set `ALPHA_VANTAGE_API_KEY` or `STOOQ_API_KEY` to use live data; otherwise the
+generator falls back to the included sample data.
+
+For the Streamlit demo, add a live data key in `.env`:
+
+```bash
+cp .env.example .env
+# Edit .env and set ALPHA_VANTAGE_API_KEY
+.venv/bin/streamlit run app.py
+```
 
 ### Step 2: Train the Model
 ```bash

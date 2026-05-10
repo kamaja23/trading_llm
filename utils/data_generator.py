@@ -6,11 +6,11 @@ format suitable for training an LLM.
 """
 
 import pandas as pd
-import yfinance as yf
 from typing import List, Tuple
 import os
 from pathlib import Path
 
+from utils.market_data import MarketDataError, fetch_market_data
 from utils.token_definitions import get_symbol_token, get_timeframe_token
 from utils.indicators import add_all_indicators
 
@@ -24,7 +24,7 @@ def download_price_data(
     sample_data_path: str = None
 ) -> pd.DataFrame:
     """
-    Download historical price data using yfinance, or load sample data if offline.
+    Download historical price data, or load sample data if offline.
     
     Args:
         symbol: Ticker symbol (e.g., 'SPY')
@@ -64,13 +64,12 @@ def download_price_data(
         
         print(f"Filtered to {len(df)} days in date range")
     else:
-        # Download from yfinance
-        print(f"Downloading {symbol} data from {start_date} to {end_date}...")
+        # Download from a configured market data provider
+        print(f"Downloading {symbol} data ({start_date} to {end_date})...")
         
         try:
-            ticker = yf.Ticker(symbol)
-            df = ticker.history(start=start_date, end=end_date)
-        except Exception as e:
+            df = fetch_market_data(symbol, start_date=start_date, end_date=end_date)
+        except MarketDataError as e:
             print(f"\n⚠️  Failed to download data: {e}")
             print("Attempting to use sample data instead...")
             return download_price_data(
