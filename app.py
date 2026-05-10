@@ -178,6 +178,86 @@ def stock_tab_hover_css() -> str:
     return "\n".join(rules)
 
 
+def indicator_bias(key: str, value: str) -> str:
+    if key in BULLISH_INDICATORS and value in BULLISH_INDICATORS[key]:
+        return "bullish"
+    if key in BEARISH_INDICATORS and value in BEARISH_INDICATORS[key]:
+        return "bearish"
+    return "neutral"
+
+
+def prediction_explanation(result) -> tuple[str, list[str]]:
+    prediction = result.prediction
+    probabilities = sorted(
+        result.action_probabilities.items(),
+        key=lambda item: item[1],
+        reverse=True,
+    )
+    _, top_prob = probabilities[0]
+    runner_up_action, runner_up_prob = probabilities[1]
+    probability_gap = top_prob - runner_up_prob
+
+    aligned_signals = []
+    opposing_signals = []
+    neutral_signals = []
+
+    target_bias = {
+        "BUY": "bullish",
+        "SELL": "bearish",
+    }.get(prediction)
+
+    for key in ["trend", "volume", "heikin_ashi", "stochastic"]:
+        value = result.indicators[key]
+        bias = indicator_bias(key, value)
+        description = INDICATOR_VALUES.get(value, value)
+        label = INDICATOR_LABELS[key]
+        signal_text = f"{label}: {description}"
+
+        if target_bias and bias == target_bias:
+            aligned_signals.append(signal_text)
+        elif target_bias and bias in ("bullish", "bearish"):
+            opposing_signals.append(signal_text)
+        else:
+            neutral_signals.append(signal_text)
+
+    if probability_gap >= 0.25:
+        confidence_reason = (
+            f"The confidence is higher because {prediction} leads "
+            f"{runner_up_action} by {probability_gap:.1%}."
+        )
+    elif probability_gap >= 0.10:
+        confidence_reason = (
+            f"The confidence is moderate because {prediction} is ahead of "
+            f"{runner_up_action}, but only by {probability_gap:.1%}."
+        )
+    else:
+        confidence_reason = (
+            f"The confidence is cautious because {prediction} and "
+            f"{runner_up_action} are close, separated by {probability_gap:.1%}."
+        )
+
+    if prediction == "BUY":
+        direction_reason = "The model is leaning BUY because current signals skew bullish."
+    elif prediction == "SELL":
+        direction_reason = "The model is leaning SELL because current signals skew bearish."
+    else:
+        direction_reason = "The model is leaning HOLD because the current signals are mixed or muted."
+
+    details = [confidence_reason]
+    if aligned_signals:
+        details.append("Supporting signals: " + "; ".join(aligned_signals) + ".")
+    if opposing_signals:
+        details.append("Signals working against it: " + "; ".join(opposing_signals) + ".")
+    if neutral_signals:
+        details.append("Neutral signals: " + "; ".join(neutral_signals) + ".")
+
+    details.append(
+        f"Overall indicator score is {result.indicator_score:+.2f} on a -1 to +1 scale."
+    )
+
+    return direction_reason, details
+
+
 def show_lookup_dialog(message: str):
     if hasattr(st, "dialog"):
         @st.dialog("Stock not found")
@@ -239,7 +319,12 @@ with st.sidebar:
         raw_ticker = col1.text_input(
             "Ticker", placeholder="e.g. Apple or AAPL", label_visibility="collapsed"
         ).strip()
-        submitted = col2.form_submit_button("+ Add", width="stretch")
+        submitted = col2.form_submit_button(
+            "",
+            width="stretch",
+            icon=":material/add:",
+            help="Add stock",
+        )
 
     new_ticker = normalize_ticker(raw_ticker)
     if submitted:
@@ -279,7 +364,12 @@ with st.sidebar:
         cols = st.columns([3, 1, 1])
         analyzed = ticker in st.session_state.analyses
         cols[0].markdown(company_label_html(ticker, analyzed), unsafe_allow_html=True)
-        if cols[1].button("🔄", key=f"ref_{ticker}", help="Refresh"):
+        if cols[1].button(
+            "",
+            key=f"ref_{ticker}",
+            help="Refresh",
+            icon=":material/refresh:",
+        ):
             st.session_state.analyses.pop(ticker, None)
             st.rerun()
         if cols[2].button("✕", key=f"rm_{ticker}", help="Remove"):
@@ -450,6 +540,12 @@ for idx, ticker in enumerate(st.session_state.watchlist):
                     else ""
                 )
             )
+
+            explanation_intro, explanation_details = prediction_explanation(result)
+            st.markdown("**Why This Prediction**")
+            st.write(explanation_intro)
+            for detail in explanation_details:
+                st.caption(detail)
 
             neutral_color = "#90a4ae"
             buy_color = "#26a69a"
