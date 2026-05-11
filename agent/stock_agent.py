@@ -122,13 +122,6 @@ class StockAnalysisAgent:
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
     ) -> pd.DataFrame:
-        csv_path = self._local_csv_path(ticker)
-        if csv_path and csv_path.exists():
-            df = pd.read_csv(csv_path, index_col=0, parse_dates=True)
-            df = self._filter_date_range(df, start_date, end_date)
-            if len(df) >= 30:
-                return df
-
         provider_error = None
         try:
             df = fetch_market_data(

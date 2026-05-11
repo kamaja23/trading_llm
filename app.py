@@ -9,6 +9,8 @@ Usage:
   streamlit run app.py
 """
 
+from datetime import date, timedelta
+
 import streamlit as st
 from streamlit.runtime.scriptrunner_utils.script_run_context import get_script_run_ctx
 
@@ -51,13 +53,10 @@ def get_agent():
 agent = get_agent()
 
 DEMO_VERSION = "clarify_unresolved_stock_lookup"
-DEFAULT_WATCHLIST = ["AAPL", "MSFT", "NVDA", "GOOGL"]
-DEFAULT_PRIVATE_COMPANIES = [
-    ("OpenAI", "Private company · no public stock ticker"),
-    ("Anthropic", "Private company · no public stock ticker"),
-]
-DEMO_START_DATE = "2026-02-27"
-DEMO_END_DATE = "2026-04-30"
+DEFAULT_WATCHLIST: list[str] = []
+DEFAULT_PRIVATE_COMPANIES: list[tuple[str, str]] = []
+DEMO_END_DATE = (date.today() - timedelta(days=1)).isoformat()
+DEMO_START_DATE = (date.fromisoformat(DEMO_END_DATE) - timedelta(days=365)).isoformat()
 COMPANY_NAMES = {
     "AAPL": "Apple",
     "MSFT": "Microsoft",
@@ -73,7 +72,7 @@ TICKER_ALIASES = {
     "GOOGLE": "GOOGL",
     "ALPHABET": "GOOGL",
 }
-PRIVATE_ALIASES = {
+_DEFAULT_PRIVATE_ALIASES = {
     "OPENAI": ("OpenAI", "Private company · no public stock ticker"),
     "OPEN AI": ("OpenAI", "Private company · no public stock ticker"),
     "ANTHROPIC": ("Anthropic", "Private company · no public stock ticker"),
@@ -100,7 +99,7 @@ def normalize_ticker(raw: str) -> str:
 
 
 def private_company_for(raw: str):
-    return PRIVATE_ALIASES.get(raw.upper().strip())
+    return st.session_state.private_aliases.get(raw.upper().strip())
 
 
 def analyze_demo_stock(ticker: str):
@@ -116,6 +115,7 @@ if st.session_state.get("demo_version") != DEMO_VERSION:
     st.session_state.analyses = {}
     st.session_state.private_companies = DEFAULT_PRIVATE_COMPANIES.copy()
     st.session_state.company_names = COMPANY_NAMES.copy()
+    st.session_state.private_aliases = _DEFAULT_PRIVATE_ALIASES.copy()
 elif "watchlist" not in st.session_state:
     st.session_state.watchlist = DEFAULT_WATCHLIST.copy()
 if "analyses" not in st.session_state:
@@ -128,6 +128,10 @@ if "pending_unresolved_stock" not in st.session_state:
     st.session_state.pending_unresolved_stock = None
 if "stock_lookup_dialog" not in st.session_state:
     st.session_state.stock_lookup_dialog = None
+if "private_aliases" not in st.session_state:
+    st.session_state.private_aliases = _DEFAULT_PRIVATE_ALIASES.copy()
+if "pending_private_add" not in st.session_state:
+    st.session_state.pending_private_add = None
 
 
 def company_name(ticker: str) -> str:
@@ -152,6 +156,13 @@ def prediction_hover_colors(ticker: str) -> tuple[str, str]:
         "BUY": ("#1b8f5a", "#e8f5e9"),
         "SELL": ("#c0392b", "#ffebee"),
     }.get(analysis.prediction, ("#6b7280", "#f3f4f6"))
+
+
+def prediction_card_colors(prediction: str) -> tuple[str, str, str]:
+    return {
+        "BUY": ("#e8f5e9", "#166534", "#bbf7d0"),
+        "SELL": ("#ffebee", "#991b1b", "#fecdd3"),
+    }.get(prediction, ("#f5f5f5", "#374151", "#d1d5db"))
 
 
 def stock_tab_hover_css() -> str:
@@ -272,13 +283,17 @@ def show_lookup_dialog(message: str):
         st.warning(message)
 
 
-def add_private_company(private_company):
-    if private_company not in st.session_state.private_companies:
-        st.session_state.private_companies.append(private_company)
-        st.toast(f"{private_company[0]} added to private list")
+def add_private_company(private_company, alias: str = ""):
+    name, desc = private_company
+    entry = (name, desc)
+    if entry not in st.session_state.private_companies:
+        st.session_state.private_companies.append(entry)
+        if alias:
+            st.session_state.private_aliases[alias.upper().strip()] = entry
+        st.toast(f"{name} added to private list")
         st.rerun()
     else:
-        st.toast(f"{private_company[0]} is already in private list")
+        st.toast(f"{name} is already in private list")
 
 
 def unresolved_stock_message(raw_ticker: str) -> str:
@@ -328,6 +343,7 @@ with st.sidebar:
 
     new_ticker = normalize_ticker(raw_ticker)
     if submitted:
+        st.session_state.pending_private_add = None
         if new_ticker:
             private_company = private_company_for(raw_ticker)
             if private_company:
@@ -350,13 +366,24 @@ with st.sidebar:
                         add_public_stock(new_ticker)
                     elif st.session_state.pending_unresolved_stock == raw_ticker.upper():
                         st.session_state.pending_unresolved_stock = None
-                        st.session_state.stock_lookup_dialog = (
-                            "Could not find any relevant information."
-                        )
+                        st.session_state.pending_private_add = raw_ticker.upper()
                         st.rerun()
                     else:
                         st.session_state.pending_unresolved_stock = raw_ticker.upper()
                         st.warning(unresolved_stock_message(raw_ticker))
+
+    pending = st.session_state.get("pending_private_add")
+    if pending:
+        st.warning(f"'{pending}' is not a public stock.")
+        col_a, col_b = st.columns(2)
+        if col_a.button(f"Add as private company", use_container_width=True):
+            entry = (pending.title(), "Private company · no public stock ticker")
+            st.session_state.private_aliases[pending] = entry
+            st.session_state.pending_private_add = None
+            add_private_company(entry)
+        if col_b.button("Dismiss", use_container_width=True):
+            st.session_state.pending_private_add = None
+            st.rerun()
 
     st.divider()
 
@@ -391,6 +418,18 @@ with st.sidebar:
                 st.session_state.private_companies.pop(idx)
                 st.rerun()
 
+    with st.expander("Add private company", expanded=False):
+        with st.form("add_private_form", clear_on_submit=True):
+            priv_name = st.text_input("Company name", placeholder="e.g. SpaceX")
+            priv_alias = st.text_input("Search alias (optional)", placeholder="e.g. SPACEX")
+            priv_desc = st.text_input("Description (optional)", placeholder="Private company")
+            priv_submitted = st.form_submit_button("Add", use_container_width=True)
+        if priv_submitted and priv_name:
+            alias = (priv_alias or priv_name).upper().strip()
+            desc = priv_desc or "Private company · no public stock ticker"
+            entry = (priv_name.strip(), desc)
+            add_private_company(entry, alias=alias)
+
     st.divider()
     cols = st.columns(2)
     if cols[0].button("Refresh All", width="stretch", type="primary"):
@@ -405,7 +444,7 @@ with st.sidebar:
     st.caption(
         "Model analyzes 4 technical indicators (trend, volume, "
         "Heikin Ashi, Stochastic). Demo loads local big-tech data from "
-        f"{DEMO_START_DATE} to {DEMO_END_DATE}. "
+        f"{DEMO_START_DATE} to {DEMO_END_DATE} (auto, refreshed daily). "
         "Not financial advice."
     )
 
@@ -497,32 +536,30 @@ for idx, ticker in enumerate(st.session_state.watchlist):
         with info_col:
             pred = result.prediction
             conf = result.confidence
-            rec_text, rec_color = agent.recommendation_text(pred, conf)
+            rec_text, _rec_color = agent.recommendation_text(pred, conf)
 
             st.metric(
                 label=f"{company_name(result.ticker)} · {result.ticker} · {result.date}",
                 value=f"${result.price:.2f}",
             )
 
-            bg_color = (
-                "#e8f5e9" if pred == "BUY"
-                else "#ffebee" if pred == "SELL"
-                else "#f5f5f5"
-            )
+            bg_color, card_text_color, border_color = prediction_card_colors(pred)
             st.markdown(
                 f"""
                 <div style="
                     background: {bg_color};
+                    border: 1px solid {border_color};
                     border-radius: 12px;
                     padding: 16px;
                     text-align: center;
                     margin: 12px 0;
+                    color: {card_text_color};
                 ">
-                    <div style="font-size: 14px; color: #666;">Model Prediction</div>
-                    <div style="font-size: 38px; font-weight: 700; color: {rec_color};">
+                    <div style="font-size: 14px; color: #4b5563;">Model Prediction</div>
+                    <div style="font-size: 38px; font-weight: 700; color: {card_text_color};">
                         {pred}
                     </div>
-                    <div style="font-size: 16px; margin-top: 4px;">
+                    <div style="font-size: 16px; margin-top: 4px; color: #374151;">
                         {conf:.1%} confidence
                     </div>
                 </div>
