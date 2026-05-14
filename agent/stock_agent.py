@@ -6,6 +6,7 @@ and returns BUY/SELL/HOLD predictions with confidence scores.
 """
 
 import sys
+from datetime import date
 from pathlib import Path
 import pandas as pd
 import torch
@@ -17,7 +18,7 @@ sys.path.insert(0, str(project_root))
 
 from transformers import GPT2Tokenizer, GPT2LMHeadModel
 from utils.indicators import add_all_indicators
-from utils.market_data import MarketDataError, fetch_market_data
+from utils.market_data import MarketDataError, fetch_market_data, fetch_realtime_quote
 from utils.token_definitions import ACTION_TOKENS
 
 
@@ -76,6 +77,7 @@ class AnalysisResult:
     historical_action: str
     input_sequence: str
     price_history: Optional[Dict] = None
+    live_data: Optional[Dict] = None
 
 
 class StockAnalysisError(Exception):
@@ -354,6 +356,120 @@ class StockAnalysisAgent:
             historical_action=latest["action_token"],
             input_sequence=input_sequence,
             price_history=price_history,
+        )
+
+    def live_analyze(
+        self,
+        ticker: str,
+        period: str = "2y",
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        include_chart_data: bool = True,
+    ) -> AnalysisResult:
+        ticker = ticker.upper().strip()
+        symbol_token = self._resolve_symbol_token(ticker)
+
+        df = self.fetch_data(
+            ticker,
+            period=period,
+            start_date=start_date,
+            end_date=end_date,
+        )
+
+        quote = fetch_realtime_quote(ticker)
+        live_data = None
+        today_str = date.today().isoformat() if quote else None
+
+        if quote and quote.get("price") is not None:
+            today_bar = {
+                "Open": quote.get("open") or quote.get("previous_close") or float(df["Close"].iloc[-1]),
+                "High": quote.get("high") or quote["price"],
+                "Low": quote.get("low") or quote["price"],
+                "Close": quote["price"],
+                "Volume": quote.get("volume") or 0,
+            }
+            if today_str in df.index:
+                df.loc[today_str] = today_bar
+            else:
+                today_df = pd.DataFrame(
+                    [today_bar],
+                    index=pd.DatetimeIndex([pd.Timestamp(today_str)]),
+                )
+                df = pd.concat([df, today_df])
+
+            prev_close = quote.get("previous_close")
+            live_data = {
+                "price": quote["price"],
+                "change": quote["price"] - (prev_close or quote["price"]),
+                "change_pct": ((quote["price"] - (prev_close or quote["price"])) / (prev_close or quote["price"]) * 100),
+                "market_state": quote.get("market_state", "UNKNOWN"),
+                "last_updated": quote.get("timestamp"),
+                "today_high": today_bar["High"],
+                "today_low": today_bar["Low"],
+                "today_open": today_bar["Open"],
+                "today_volume": today_bar["Volume"],
+            }
+
+        df_indicators = self.compute_indicators(df)
+        latest = df_indicators.iloc[-1]
+
+        indicators = {
+            "trend": latest["trend_token"],
+            "volume": latest["volume_token"],
+            "heikin_ashi": latest["ha_token"],
+            "stochastic": latest["sto_token"],
+        }
+
+        input_sequence = (
+            f"{symbol_token} <TF_DAILY> "
+            f"{indicators['trend']} {indicators['volume']} "
+            f"{indicators['heikin_ashi']} {indicators['stochastic']}"
+        )
+
+        prediction = self._predict(input_sequence)
+        stock_classifier = self._train_stock_classifier(df_indicators, latest)
+        if stock_classifier:
+            displayed_prediction = stock_classifier
+            prediction_source = "On-the-spot stock classifier"
+            training_samples = stock_classifier["training_samples"]
+            training_accuracy = stock_classifier["training_accuracy"]
+        else:
+            displayed_prediction = prediction
+            prediction_source = "Trading LLM next-token model"
+            training_samples = 0
+            training_accuracy = None
+
+        indicator_score = self._score_indicators(indicators)
+
+        price_history = None
+        if include_chart_data:
+            chart_df = df_indicators[["Open", "High", "Low", "Close", "Volume"]].copy()
+            price_history = {
+                "dates": [str(d.date()) for d in chart_df.index],
+                "Open": chart_df["Open"].tolist(),
+                "High": chart_df["High"].tolist(),
+                "Low": chart_df["Low"].tolist(),
+                "Close": chart_df["Close"].tolist(),
+                "Volume": chart_df["Volume"].tolist(),
+            }
+
+        return AnalysisResult(
+            ticker=ticker,
+            date=str(latest.name.date()),
+            price=float(latest["Close"]),
+            prediction=displayed_prediction["prediction"],
+            confidence=displayed_prediction["confidence"],
+            action_probabilities=displayed_prediction["action_probabilities"],
+            prediction_source=prediction_source,
+            training_samples=training_samples,
+            training_accuracy=training_accuracy,
+            indicators=indicators,
+            top_k_tokens=prediction["top_k"],
+            indicator_score=indicator_score,
+            historical_action=latest["action_token"],
+            input_sequence=input_sequence,
+            price_history=price_history,
+            live_data=live_data,
         )
 
     def analyze_multiple(

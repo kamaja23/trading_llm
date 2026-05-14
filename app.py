@@ -9,9 +9,11 @@ Usage:
   streamlit run app.py
 """
 
-from datetime import date, timedelta
+import time
+from datetime import date, datetime, timedelta
 
 import streamlit as st
+from streamlit_autorefresh import st_autorefresh
 from streamlit.runtime.scriptrunner_utils.script_run_context import get_script_run_ctx
 
 if get_script_run_ctx(suppress_warning=True) is None:
@@ -39,6 +41,16 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+# Auto-refresh via streamlit-autorefresh (no full page reload)
+if st.session_state.get("live_mode"):
+    interval_ms = st.session_state.get("live_interval", 30) * 1000
+    refresh_count = st_autorefresh(interval=interval_ms, key="live_autorefresh")
+    prev_count = st.session_state.get("_autorefresh_count", -1)
+    if refresh_count != prev_count:
+        st.session_state._autorefresh_count = refresh_count
+        st.session_state.analyses = {}
+        st.session_state.last_live_refresh = time.time()
 
 
 @st.cache_resource
@@ -109,6 +121,15 @@ def analyze_demo_stock(ticker: str):
         end_date=DEMO_END_DATE,
     )
 
+
+def analyze_live_stock(ticker: str):
+    return agent.live_analyze(
+        ticker,
+        start_date=DEMO_START_DATE,
+        end_date=DEMO_END_DATE,
+    )
+
+
 if st.session_state.get("demo_version") != DEMO_VERSION:
     st.session_state.demo_version = DEMO_VERSION
     st.session_state.watchlist = DEFAULT_WATCHLIST.copy()
@@ -132,6 +153,18 @@ if "private_aliases" not in st.session_state:
     st.session_state.private_aliases = _DEFAULT_PRIVATE_ALIASES.copy()
 if "pending_private_add" not in st.session_state:
     st.session_state.pending_private_add = None
+if "live_mode" not in st.session_state:
+    st.session_state.live_mode = False
+if "live_interval" not in st.session_state:
+    st.session_state.live_interval = 30
+if "last_live_refresh" not in st.session_state:
+    st.session_state.last_live_refresh = 0.0
+
+# Restore watchlist from query params on page reload (for live mode auto-refresh)
+if "w" in st.query_params and not st.session_state.watchlist:
+    raw = st.query_params["w"]
+    if raw:
+        st.session_state.watchlist = [t for t in raw.split(",") if t]
 
 
 def company_name(ticker: str) -> str:
@@ -448,6 +481,26 @@ with st.sidebar:
         "Not financial advice."
     )
 
+    # === Live Mode ===
+    st.divider()
+    live_mode = st.toggle("Live Mode", value=st.session_state.live_mode, key="live_toggle")
+    st.session_state.live_mode = live_mode
+
+    if live_mode:
+        interval = st.select_slider(
+            "Refresh interval",
+            options=[10, 30, 60, 120],
+            value=st.session_state.live_interval,
+            key="live_interval_slider",
+        )
+        st.session_state.live_interval = interval
+
+        elapsed = time.time() - st.session_state.get("last_live_refresh", 0)
+        if st.session_state.last_live_refresh > 0:
+            st.caption(f"{int(elapsed)}s since last refresh · auto-refreshes every {interval}s")
+        else:
+            st.caption(f"Auto-refreshes every {interval}s (waiting for first refresh)")
+
 st.title("Trading LLM — Stock Analysis Agent")
 
 if not st.session_state.watchlist:
@@ -461,12 +514,14 @@ tabs = st.tabs([
     for t in st.session_state.watchlist
 ])
 
+analyze_fn = analyze_live_stock if st.session_state.live_mode else analyze_demo_stock
+
 for idx, ticker in enumerate(st.session_state.watchlist):
     with tabs[idx]:
         if ticker not in st.session_state.analyses:
-            with st.spinner(f"Fetching data, training, and analyzing {ticker}..."):
+            with st.spinner(f"{'Live' if st.session_state.live_mode else 'Fetching'} data, training, and analyzing {ticker}..."):
                 try:
-                    result = analyze_demo_stock(ticker)
+                    result = analyze_fn(ticker)
                     st.session_state.analyses[ticker] = result
                     st.rerun()
                 except StockAnalysisError as e:
@@ -542,6 +597,25 @@ for idx, ticker in enumerate(st.session_state.watchlist):
                 label=f"{company_name(result.ticker)} · {result.ticker} · {result.date}",
                 value=f"${result.price:.2f}",
             )
+
+            if result.live_data:
+                ld = result.live_data
+                change = ld.get("change", 0)
+                change_pct = ld.get("change_pct", 0)
+                arrow = "▲" if change >= 0 else "▼"
+                color = "#26a69a" if change >= 0 else "#ef5350"
+                st.markdown(
+                    f"<span style='color:{color};font-size:1.1rem;'>"
+                    f"{arrow} ${abs(change):.2f} ({change_pct:+.2f}%)</span>"
+                    f"<br><span style='color:#777;font-size:0.8rem;'>"
+                    f"H:{ld.get('today_high', 0):.2f} "
+                    f"L:{ld.get('today_low', 0):.2f} "
+                    f"O:{ld.get('today_open', 0):.2f} "
+                    f"Vol:{ld.get('today_volume', 0):,}"
+                    f" · {ld.get('market_state', '')}"
+                    f" · {ld.get('last_updated', '')[:19]}</span>",
+                    unsafe_allow_html=True,
+                )
 
             bg_color, card_text_color, border_color = prediction_card_colors(pred)
             st.markdown(

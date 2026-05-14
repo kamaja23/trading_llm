@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta
 from io import BytesIO
+import json
 import os
 import re
 from typing import Optional
@@ -18,6 +19,7 @@ ALPHA_VANTAGE_DAILY_URL = "https://www.alphavantage.co/query"
 STOCKANALYSIS_LOOKUP_URL = "https://stockanalysis.com/symbol-lookup/"
 STOCKANALYSIS_HISTORY_URL = "https://stockanalysis.com/stocks/{symbol}/history/"
 STOCKANALYSIS_QUOTE_HISTORY_URL = "https://stockanalysis.com/quote/{exchange}/{symbol}/history/"
+YAHOO_CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart"
 PROJECT_ROOT = os.path.dirname(os.path.dirname(__file__))
 ENV_PATH = os.path.join(PROJECT_ROOT, ".env")
 STOCKANALYSIS_ROW_RE = re.compile(
@@ -279,6 +281,56 @@ def fetch_stockanalysis_data(
         raise MarketDataError(f"StockAnalysis returned no daily data for {symbol}.")
 
     return _normalize_ohlcv(pd.DataFrame(rows), symbol)
+
+
+def _resolve_market_state(meta: dict) -> str:
+    """Derive market state (PRE / REGULAR / POST / CLOSED) from Yahoo trading periods."""
+    periods = meta.get("currentTradingPeriod", {})
+    offset = meta.get("gmtoffset", 0)
+    now = datetime.utcnow().timestamp() + offset
+    for state in ("pre", "regular", "post"):
+        p = periods.get(state)
+        if p and p.get("start", 0) <= now <= p.get("end", 0):
+            return state.upper()
+    return "CLOSED"
+
+
+def fetch_realtime_quote(symbol: str, timeout: int = 10) -> Optional[dict]:
+    """
+    Fetch a real-time quote for a symbol from Yahoo Finance v8 chart API.
+
+    Returns a dict with keys:
+      price, open, high, low, volume, previous_close, market_state, timestamp
+    Returns None if the quote cannot be fetched.
+    """
+    url = f"{YAHOO_CHART_URL}/{symbol.strip().upper()}?range=2d&interval=1d"
+    try:
+        request = Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urlopen(request, timeout=timeout) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        result = data.get("chart", {}).get("result", [])
+        if not result:
+            return None
+        meta = result[0].get("meta", {})
+        price = meta.get("regularMarketPrice")
+        if price is None:
+            return None
+
+        quotes = result[0].get("indicators", {}).get("quote", [{}])[0]
+        today_open = quotes.get("open", [None])[-1] if quotes.get("open") else None
+
+        return {
+            "price": float(price),
+            "open": float(today_open) if today_open else None,
+            "high": float(meta["regularMarketDayHigh"]) if meta.get("regularMarketDayHigh") else float(price),
+            "low": float(meta["regularMarketDayLow"]) if meta.get("regularMarketDayLow") else float(price),
+            "volume": int(meta["regularMarketVolume"]) if meta.get("regularMarketVolume") else 0,
+            "previous_close": float(meta["chartPreviousClose"]) if meta.get("chartPreviousClose") else None,
+            "market_state": _resolve_market_state(meta),
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+    except Exception:
+        return None
 
 
 def _download(url: str, timeout: int) -> bytes:
