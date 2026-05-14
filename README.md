@@ -71,6 +71,33 @@ python -c "import torch; print(f'ROCm: {torch.cuda.is_available()}')"
 
 See [RX7800XT_SETUP.md](RX7800XT_SETUP.md) for detailed setup guide.
 
+### Docker
+
+```bash
+# Build the image
+docker build -t trading-llm .
+
+# Run the Streamlit app (mount your trained model)
+docker run -p 8501:8501 \
+  -v /path/to/your/models:/app/models \
+  trading-llm
+
+# Run with live market data (set API keys via -e)
+docker run -p 8501:8501 \
+  -v /path/to/your/models:/app/models \
+  -e ALPHA_VANTAGE_API_KEY=your_key \
+  trading-llm
+
+# Run a different command (train, data gen, test, etc.)
+docker run --rm \
+  -v /path/to/your/models:/app/models \
+  -v /path/to/your/data:/app/data \
+  trading-llm \
+  python src/02_train_model.py
+```
+
+Note: The image does not bundle model or data files — they are mounted as volumes.
+
 ## Usage
 
 ### Step 1: Generate Training Data
