@@ -39,7 +39,7 @@ from utils.market_data import MarketDataError, resolve_stockanalysis_symbol
 st.set_page_config(
     page_title="Trading LLM — Stock Analysis Agent",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 
 # Auto-refresh via streamlit-autorefresh (no full page reload)
