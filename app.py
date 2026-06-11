@@ -13,6 +13,7 @@ import time
 from datetime import date, datetime, timedelta
 
 import streamlit as st
+import streamlit.components.v1 as components
 from streamlit_autorefresh import st_autorefresh
 from streamlit.runtime.scriptrunner_utils.script_run_context import get_script_run_ctx
 
@@ -24,6 +25,18 @@ if get_script_run_ctx(suppress_warning=True) is None:
         "  streamlit run app.py\n"
     )
     raise SystemExit(1)
+
+from auth.auth import (
+    init_db,
+    register_user,
+    authenticate_user,
+    create_session,
+    verify_session,
+    delete_session,
+    save_stock,
+    remove_stock,
+    get_saved_stocks,
+)
 
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -63,6 +76,35 @@ def get_agent():
 
 
 agent = get_agent()
+init_db()
+
+# ── Auth session state ──────────────────────────────────────────────
+if "user" not in st.session_state:
+    st.session_state.user = None
+if "auth_token" not in st.session_state:
+    st.session_state.auth_token = None
+if "_auth_restored" not in st.session_state:
+    st.session_state._auth_restored = False
+
+# Restore session from query param token (survives page refresh)
+if not st.session_state._auth_restored:
+    token_from_url = st.query_params.get("token")
+    if token_from_url:
+        valid, payload = verify_session(token_from_url)
+        if valid:
+            st.session_state.user = payload
+            st.session_state.auth_token = token_from_url
+    st.session_state._auth_restored = True
+
+# Load saved stocks when user logs in (detect transition)
+if st.session_state.user and not st.session_state.watchlist:
+    saved = get_saved_stocks(st.session_state.user["user_id"])
+    for s in saved:
+        ticker = s["ticker"]
+        if ticker not in st.session_state.watchlist:
+            st.session_state.watchlist.append(ticker)
+            if s["company_name"]:
+                st.session_state.company_names[ticker] = s["company_name"]
 
 DEMO_VERSION = "clarify_unresolved_stock_lookup"
 DEFAULT_WATCHLIST: list[str] = []
@@ -353,11 +395,149 @@ def add_public_stock(ticker: str):
 
     st.session_state.watchlist.append(ticker)
     st.session_state.analyses[ticker] = analysis
+    if st.session_state.user:
+        save_stock(st.session_state.user["user_id"], ticker,
+                   st.session_state.company_names.get(ticker, ""))
     st.rerun()
+
+
+# ── Auth helpers ────────────────────────────────────────────────────
+
+def _set_cookie(name: str, value: str, days: int = 30):
+    components.html(
+        f"""
+        <script>
+        (function() {{
+            var d = new Date();
+            d.setTime(d.getTime() + ({days} * 24 * 60 * 60 * 1000));
+            document.cookie = "{name}=" + encodeURIComponent("{value}")
+                + ";expires=" + d.toUTCString() + ";path=/;SameSite=Lax";
+        }})();
+        </script>
+        """,
+        height=0,
+    )
+
+
+def _clear_cookie(name: str):
+    components.html(
+        f"""
+        <script>
+        (function() {{
+            document.cookie = "{name}=;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/;SameSite=Lax";
+        }})();
+        </script>
+        """,
+        height=0,
+    )
+
+
+def _try_restore_from_cookie():
+    """Inject JS to read auth cookie and redirect with token in URL."""
+    if st.session_state.user or st.query_params.get("token"):
+        return
+    components.html(
+        """
+        <script>
+        (function() {
+            function getCookie(name) {
+                var value = "; " + document.cookie;
+                var parts = value.split("; " + name + "=");
+                if (parts.length === 2) return decodeURIComponent(parts.pop().split(";").shift());
+                return null;
+            }
+            var token = getCookie("auth_token");
+            if (token) {
+                var url = new URL(window.location.href);
+                if (!url.searchParams.has("token")) {
+                    url.searchParams.set("token", token);
+                    window.parent.location.replace(url.toString());
+                }
+            }
+        })();
+        </script>
+        """,
+        height=0,
+    )
+
+
+def _show_auth_section():
+    if st.session_state.user:
+        _show_logged_in_ui()
+    else:
+        _show_login_signup_ui()
+
+
+def _show_logged_in_ui():
+    user = st.session_state.user
+    st.sidebar.markdown(
+        f"**Logged in as:** {user['username']}",
+    )
+    if st.sidebar.button("Logout", use_container_width=True, type="secondary"):
+        token = st.session_state.auth_token
+        if token:
+            delete_session(token)
+        st.session_state.user = None
+        st.session_state.auth_token = None
+        st.session_state.watchlist = []
+        st.session_state.analyses = {}
+        st.query_params.clear()
+        _clear_cookie("auth_token")
+        st.rerun()
+
+
+def _show_login_signup_ui():
+    with st.sidebar.expander("Login / Sign Up", expanded=True):
+        tab_login, tab_signup = st.tabs(["Login", "Sign Up"])
+
+        with tab_login:
+            with st.form("login_form", clear_on_submit=False):
+                l_user = st.text_input("Username", placeholder="Enter username")
+                l_pass = st.text_input("Password", type="password", placeholder="Enter password")
+                l_submit = st.form_submit_button("Login", use_container_width=True)
+            if l_submit:
+                ok, msg, user = authenticate_user(l_user, l_pass)
+                if ok and user:
+                    token = create_session(user["id"], user["username"])
+                    st.session_state.user = {"user_id": user["id"], "username": user["username"]}
+                    st.session_state.auth_token = token
+                    st.query_params["token"] = token
+                    _set_cookie("auth_token", token)
+                    saved = get_saved_stocks(user["id"])
+                    for s in saved:
+                        t = s["ticker"]
+                        if t not in st.session_state.watchlist:
+                            st.session_state.watchlist.append(t)
+                            if s["company_name"]:
+                                st.session_state.company_names[t] = s["company_name"]
+                    st.toast(msg)
+                    st.rerun()
+                else:
+                    st.error(msg)
+
+        with tab_signup:
+            with st.form("signup_form", clear_on_submit=False):
+                s_user = st.text_input("Choose username", placeholder="Username (min 2 chars)")
+                s_pass = st.text_input("Choose password", type="password", placeholder="Password (min 4 chars)")
+                s_confirm = st.text_input("Confirm password", type="password", placeholder="Repeat password")
+                s_submit = st.form_submit_button("Create Account", use_container_width=True)
+            if s_submit:
+                if s_pass != s_confirm:
+                    st.error("Passwords do not match.")
+                else:
+                    ok, msg = register_user(s_user, s_pass)
+                    if ok:
+                        st.success(msg)
+                        st.toast("You can now log in.")
+                    else:
+                        st.error(msg)
 
 
 if st.session_state.stock_lookup_dialog:
     show_lookup_dialog(st.session_state.stock_lookup_dialog)
+
+_try_restore_from_cookie()
+_show_auth_section()
 
 st.sidebar.title("Watchlist")
 
@@ -435,6 +615,8 @@ with st.sidebar:
         if cols[2].button("✕", key=f"rm_{ticker}", help="Remove"):
             st.session_state.watchlist.remove(ticker)
             st.session_state.analyses.pop(ticker, None)
+            if st.session_state.user:
+                remove_stock(st.session_state.user["user_id"], ticker)
             st.rerun()
 
     if st.session_state.private_companies:
@@ -469,6 +651,9 @@ with st.sidebar:
         st.session_state.analyses = {}
         st.rerun()
     if cols[1].button("Clear All", width="stretch"):
+        if st.session_state.user:
+            for t in list(st.session_state.watchlist):
+                remove_stock(st.session_state.user["user_id"], t)
         st.session_state.watchlist = []
         st.session_state.analyses = {}
         st.rerun()
