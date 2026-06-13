@@ -1,5 +1,5 @@
 """
-Authentication module for Trading LLM.
+Authentication module for TradeBot.
 Handles user registration, login, JWT sessions, and saved stocks.
 """
 
@@ -9,8 +9,8 @@ import datetime
 import os
 from pathlib import Path
 
-DB_PATH = Path(__file__).resolve().parent.parent / "data" / "trading_llm.db"
-JWT_SECRET = os.environ.get("JWT_SECRET", "trading-llm-default-secret-change-me")
+DB_PATH = Path(__file__).resolve().parent.parent / "data" / "tradebot.db"
+JWT_SECRET = os.environ.get("JWT_SECRET", "tradebot-default-secret-change-me")
 JWT_ALGORITHM = "HS256"
 TOKEN_EXPIRY_DAYS = 30
 

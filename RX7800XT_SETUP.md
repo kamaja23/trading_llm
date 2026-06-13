@@ -37,8 +37,8 @@ rocm-smi
 
 ```bash
 # 1. Clone repository
-git clone https://github.com/YOUR_USERNAME/trading_llm.git
-cd trading_llm
+git clone https://github.com/YOUR_USERNAME/tradebot.git
+cd tradebot
 
 # 2. Create virtual environment
 python -m venv .venv
@@ -167,7 +167,7 @@ PyTorch uses the CUDA API naming even when running on AMD ROCm. This is normal:
 ## File Structure
 
 ```
-trading_llm/
+tradebot/
 ├── src/                    # Training scripts
 ├── utils/                  # Helper modules
 ├── data/                   # Training data (created when you run)
@@ -189,7 +189,7 @@ data/
     ├── val.txt                    # Validation data
     └── test.txt                   # Test data
 
-models/trading_llm/
+models/tradebot/
 ├── checkpoint-*/                  # Training checkpoints (DON'T commit)
 └── final_model/                   # Final trained model (DON'T commit)
 ```

@@ -47,7 +47,7 @@ def check_gpu():
 def main():
     """Run all verification checks"""
     print("=" * 60)
-    print("Trading LLM Hello World - Environment Verification")
+    print("TradeBot - Environment Verification")
     print("=" * 60)
     print()
     

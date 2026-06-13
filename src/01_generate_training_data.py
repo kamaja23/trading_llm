@@ -30,8 +30,12 @@ def main():
     print("STEP 1: GENERATE TRAINING DATA")
     print("=" * 60)
     
-    # Configuration - multiple symbols and timeframes for more data
-    SYMBOLS = ['SPY', 'QQQ', 'DIA', 'IWM']
+    # Configuration - expanded symbols and timeframes for richer data
+    SYMBOLS = [
+        'SPY', 'QQQ', 'DIA', 'IWM',
+        'AAPL', 'MSFT', 'NVDA', 'GOOGL', 'AMZN', 'META',
+        'TSLA', 'JPM', 'V', 'MA', 'UNH',
+    ]
     TIMEFRAMES = ['DAILY']
     START_DATE = '2015-01-01'
     END_DATE = '2025-01-01'
@@ -63,7 +67,8 @@ def main():
             sequences = generate_token_sequences(
                 df=df,
                 symbol=symbol,
-                timeframe=timeframe
+                timeframe=timeframe,
+                include_sentiment=False,
             )
             
             print(f"      Generated {len(sequences)} sequences")

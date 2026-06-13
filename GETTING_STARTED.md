@@ -14,7 +14,7 @@ This project trains a small AI model to predict when to BUY/SELL/HOLD stocks bas
 ```bash
 # 1. Clone or download this project
 # 2. Navigate to the project directory
-cd trading_llm_hello_world
+cd tradebot
 
 # 3. Create virtual environment (recommended)
 python3 -m venv venv
@@ -94,7 +94,7 @@ Output: BUY (78.5% confidence)
 ## File Structure
 
 ```
-trading_llm_hello_world/
+tradebot/
 ├── README.md              ← Start here
 ├── GETTING_STARTED.md     ← You are here
 ├── IMPLEMENTATION_GUIDE.md ← Detailed guide
@@ -125,7 +125,7 @@ With RX 7800 XT (16GB VRAM), you can try increasing to 32.
 ### "No module named 'utils'"
 Make sure you're in the project root directory:
 ```bash
-cd trading_llm_hello_world
+cd tradebot
 ```
 
 ## Next Steps

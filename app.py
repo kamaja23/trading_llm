@@ -1,5 +1,5 @@
 """
-Trading LLM - Stock Analysis Frontend
+TradeBot - Stock Analysis Frontend
 
 Streamlit app that uses the trained model to analyze stocks
 and provide BUY/SELL/HOLD recommendations with visual charts.
@@ -10,12 +10,12 @@ Usage:
 """
 
 import time
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 
 import streamlit as st
 import streamlit.components.v1 as components
-from streamlit_autorefresh import st_autorefresh
 from streamlit.runtime.scriptrunner_utils.script_run_context import get_script_run_ctx
+from streamlit_autorefresh import st_autorefresh
 
 if get_script_run_ctx(suppress_warning=True) is None:
     print(
@@ -26,31 +26,33 @@ if get_script_run_ctx(suppress_warning=True) is None:
     )
     raise SystemExit(1)
 
-from auth.auth import (
-    init_db,
-    register_user,
-    authenticate_user,
-    create_session,
-    verify_session,
-    delete_session,
-    save_stock,
-    remove_stock,
-    get_saved_stocks,
-)
-
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+
 from agent.stock_agent import (
+    BEARISH_INDICATORS,
+    BULLISH_INDICATORS,
+    INDICATOR_LABELS,
+    INDICATOR_VALUES,
     StockAnalysisAgent,
     StockAnalysisError,
-    INDICATOR_VALUES,
-    INDICATOR_LABELS,
-    BULLISH_INDICATORS,
-    BEARISH_INDICATORS,)
+)
+from auth.auth import (
+    authenticate_user,
+    create_session,
+    delete_session,
+    get_saved_stocks,
+    init_db,
+    register_user,
+    remove_stock,
+    save_stock,
+    verify_session,
+)
 from utils.market_data import MarketDataError, resolve_stockanalysis_symbol
+from utils.paper_trader import PaperTrader
 
 st.set_page_config(
-    page_title="Trading LLM — Stock Analysis Agent",
+    page_title="TradeBot — Stock Analysis Agent",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
@@ -201,6 +203,10 @@ if "live_interval" not in st.session_state:
     st.session_state.live_interval = 30
 if "last_live_refresh" not in st.session_state:
     st.session_state.last_live_refresh = 0.0
+if "paper_trader" not in st.session_state:
+    st.session_state.paper_trader = None
+if "paper_trading" not in st.session_state:
+    st.session_state.paper_trading = False
 
 # Restore watchlist from query params on page reload (for live mode auto-refresh)
 if "w" in st.query_params and not st.session_state.watchlist:
@@ -292,11 +298,14 @@ def prediction_explanation(result) -> tuple[str, list[str]]:
         "SELL": "bearish",
     }.get(prediction)
 
-    for key in ["trend", "volume", "heikin_ashi", "stochastic"]:
-        value = result.indicators[key]
+    indicator_keys = ["trend", "volume", "heikin_ashi", "stochastic", "rsi", "macd", "bb", "ma_cross", "volatility", "candle", "obv", "price_action", "market_context", "sentiment"]
+    for key in indicator_keys:
+        value = result.indicators.get(key, "")
+        if not value:
+            continue
         bias = indicator_bias(key, value)
         description = INDICATOR_VALUES.get(value, value)
-        label = INDICATOR_LABELS[key]
+        label = INDICATOR_LABELS.get(key, key)
         signal_text = f"{label}: {description}"
 
         if target_bias and bias == target_bias:
@@ -589,7 +598,7 @@ with st.sidebar:
     if pending:
         st.warning(f"'{pending}' is not a public stock.")
         col_a, col_b = st.columns(2)
-        if col_a.button(f"Add as private company", use_container_width=True):
+        if col_a.button("Add as private company", use_container_width=True):
             entry = (pending.title(), "Private company · no public stock ticker")
             st.session_state.private_aliases[pending] = entry
             st.session_state.pending_private_add = None
@@ -686,7 +695,62 @@ with st.sidebar:
         else:
             st.caption(f"Auto-refreshes every {interval}s (waiting for first refresh)")
 
-st.title("Trading LLM — Stock Analysis Agent")
+    # === Paper Trading ===
+    st.divider()
+    st.markdown("**Paper Trading**")
+
+    if not st.session_state.paper_trading:
+        col_cash, col_btn = st.columns([2, 1])
+        initial_cash = col_cash.number_input(
+            "Initial capital",
+            min_value=100.0,
+            max_value=1_000_000.0,
+            value=10_000.0,
+            step=1_000.0,
+            format="%.0f",
+            label_visibility="collapsed",
+        )
+        if col_btn.button("Start", type="primary", use_container_width=True):
+            st.session_state.paper_trader = PaperTrader(initial_cash)
+            st.session_state.paper_trading = True
+            st.rerun()
+    else:
+        trader = st.session_state.paper_trader
+        prices = {
+            t: a.price
+            for t, a in st.session_state.analyses.items()
+            if hasattr(a, "price")
+        }
+
+        port_value = trader.portfolio_value(prices)
+        st.metric(
+            "Portfolio",
+            f"${port_value:,.2f}",
+            delta=f"${port_value - trader.initial_cash:+,.2f}",
+        )
+
+        col1, col2 = st.columns(2)
+        col1.metric("Cash", f"${trader.cash:,.2f}")
+        col2.metric("Positions", str(trader.position_count))
+
+        if trader.holdings:
+            st.markdown("**Holdings**")
+            for ticker, shares in sorted(trader.holdings.items()):
+                current_price = prices.get(ticker, 0)
+                cost = trader.cost_basis(ticker)
+                value = shares * current_price
+                delta = value - (shares * cost)
+                st.metric(
+                    f"{ticker} ({shares} sh)",
+                    f"${value:,.2f}",
+                    delta=f"${delta:+,.2f}",
+                )
+
+        if st.button("Stop Trading", use_container_width=True, type="secondary"):
+            st.session_state.paper_trading = False
+            st.rerun()
+
+st.title("TradeBot — Stock Analysis Agent")
 
 if not st.session_state.watchlist:
     st.info("Add stocks to your watchlist using the sidebar.")
@@ -826,6 +890,49 @@ for idx, ticker in enumerate(st.session_state.watchlist):
                 unsafe_allow_html=True,
             )
 
+            if st.session_state.paper_trading:
+                trader = st.session_state.paper_trader
+                already_holding = result.ticker in trader.holdings
+                col_exec, col_status = st.columns([1, 1])
+                if pred == "BUY" and not already_holding:
+                    if col_exec.button(
+                        "Execute BUY", type="primary", key=f"buy_{result.ticker}",
+                        use_container_width=True,
+                    ):
+                        trade = trader.buy(result.ticker, result.price, result.date, conf)
+                        if trade:
+                            st.toast(f"Bought {trade.shares} shares of {result.ticker} for ${trade.total:,.2f}")
+                            st.rerun()
+                        else:
+                            st.toast("Insufficient cash to buy", icon="⚠️")
+                elif pred == "SELL" and already_holding:
+                    if col_exec.button(
+                        "Execute SELL", type="secondary", key=f"sell_{result.ticker}",
+                        use_container_width=True,
+                    ):
+                        trade = trader.sell(result.ticker, result.price, result.date, conf)
+                        if trade:
+                            st.toast(f"Sold {trade.shares} shares of {result.ticker} for ${trade.total:,.2f}")
+                            st.rerun()
+                elif already_holding:
+                    col_exec.markdown("**HOLD** — already in portfolio")
+                else:
+                    col_exec.markdown("**HOLD** — no action recommended")
+
+                if already_holding:
+                    cost = trader.cost_basis(result.ticker)
+                    shares = trader.holdings[result.ticker]
+                    value = shares * result.price
+                    pl = value - (shares * cost)
+                    col_status.metric(
+                        f"{shares} sh",
+                        f"${value:,.2f}",
+                        delta=f"${pl:+,.2f}",
+                    )
+                else:
+                    col_status.empty()
+                st.divider()
+
             st.markdown(f"**{rec_text}**")
             st.caption(
                 f"{result.prediction_source}"
@@ -870,17 +977,13 @@ for idx, ticker in enumerate(st.session_state.watchlist):
 
             st.divider()
             st.markdown("**Market State — Indicators**")
-            for key in ["trend", "volume", "heikin_ashi", "stochastic"]:
-                val = result.indicators[key]
+            for key in ["trend", "volume", "heikin_ashi", "stochastic", "rsi", "macd", "bb", "ma_cross", "volatility", "candle", "obv", "atr", "price_action", "market_context", "relative"]:
+                val = result.indicators.get(key, "")
+                if not val:
+                    continue
                 description = INDICATOR_VALUES.get(val, val)
-                is_bullish = "Up" in val or (
-                    key == "stochastic" and val == "STO_Oversold"
-                )
-                is_bearish = "Down" in val or (
-                    key == "stochastic" and val == "STO_Overbought"
-                )
                 with st.expander(
-                    f"**{INDICATOR_LABELS[key]}** — `{val}`",
+                    f"**{INDICATOR_LABELS.get(key, key)}** — `{val}`",
                     expanded=True,
                 ):
                     st.caption(description)

@@ -7,7 +7,7 @@ from transformers import GPT2Tokenizer, GPT2LMHeadModel
 from pathlib import Path
 import torch
 
-model_path = Path('models/trading_llm/final_model')
+model_path = Path('models/tradebot/final_model')
 tokenizer = GPT2Tokenizer.from_pretrained(str(model_path))
 model = GPT2LMHeadModel.from_pretrained(str(model_path))
 device = 'cuda' if torch.cuda.is_available() else 'cpu'

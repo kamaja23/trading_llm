@@ -1,4 +1,4 @@
-# Trading LLM v1.1 - Package Manifest
+# TradeBot v1.1 - Package Manifest
 
 ## What's Included
 
@@ -83,7 +83,7 @@
 ## Directory Structure
 
 ```
-trading_llm_final/
+tradebot/
 ├── src/                     # Core implementation (4 scripts)
 ├── utils/                   # Helper modules (4 files)
 ├── data/                    # Data directory
@@ -146,8 +146,8 @@ After extracting, verify you have:
 
 ```bash
 # Extract
-unzip trading_llm_v1.1_final.zip
-cd trading_llm_final
+unzip tradebot_v1.1_final.zip
+cd tradebot
 
 # Verify structure
 ls -la src/ utils/ data/

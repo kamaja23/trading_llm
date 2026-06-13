@@ -1,4 +1,4 @@
-# Trading LLM Hello World - Project Summary
+# TradeBot - Project Summary
 
 ## Executive Summary
 
@@ -20,7 +20,7 @@ This project demonstrates the technical feasibility of using a small, locally-tr
 ### Complete Working Implementation
 
 ```
-trading_llm_hello_world/
+tradebot/
 ├── README.md                    # Project overview
 ├── IMPLEMENTATION_GUIDE.md      # Detailed technical guide
 ├── requirements.txt             # Python dependencies
@@ -32,7 +32,7 @@ trading_llm_hello_world/
 │   └── train_test_split/       # Train/val/test datasets
 │
 ├── models/
-│   └── trading_llm/            # Trained model checkpoints
+│   └── tradebot/               # Trained model checkpoints
 │
 ├── src/
 │   ├── 01_generate_training_data.py  # Data pipeline

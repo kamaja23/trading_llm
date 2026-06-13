@@ -114,7 +114,7 @@ else:
 
 # 9. Check for existing model
 print(f"\n9. EXISTING MODEL CHECK:")
-model_path = project_root / 'models' / 'trading_llm' / 'final_model'
+model_path = project_root / 'models' / 'tradebot' / 'final_model'
 if model_path.exists():
     print(f"   ⚠️  Model already exists at {model_path}")
     print(f"   This is the OLD model trained on bad data!")
@@ -122,10 +122,10 @@ if model_path.exists():
 else:
     print(f"   ✓ No existing model (good - will train fresh)")
 
-checkpoint_dirs = list((project_root / 'models' / 'trading_llm').glob('checkpoint-*'))
+checkpoint_dirs = list((project_root / 'models' / 'tradebot').glob('checkpoint-*'))
 if checkpoint_dirs:
     print(f"   ⚠️  {len(checkpoint_dirs)} checkpoint directories exist")
-    print(f"   DELETE THEM: rm -rf models/trading_llm/checkpoint-*")
+    print(f"   DELETE THEM: rm -rf models/tradebot/checkpoint-*")
 
 print("\n" + "=" * 60)
 print("DIAGNOSTIC COMPLETE")

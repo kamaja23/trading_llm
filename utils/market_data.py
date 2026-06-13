@@ -334,7 +334,7 @@ def fetch_realtime_quote(symbol: str, timeout: int = 10) -> Optional[dict]:
 
 
 def _download(url: str, timeout: int) -> bytes:
-    request = Request(url, headers={"User-Agent": "trading-llm/1.0"})
+    request = Request(url, headers={"User-Agent": "tradebot/1.0"})
     try:
         with urlopen(request, timeout=timeout) as response:
             return response.read()

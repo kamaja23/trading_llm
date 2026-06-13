@@ -38,10 +38,11 @@ def prepare_tokenizer():
     # Add padding token (GPT-2 doesn't have one by default)
     tokenizer.pad_token = tokenizer.eos_token
     
-    # Add custom trading tokens
+    # Add custom trading tokens (expanded vocabulary)
     print(f"Adding {len(ALL_CUSTOM_TOKENS)} custom tokens...")
     num_added = tokenizer.add_tokens(ALL_CUSTOM_TOKENS)
     print(f"Added {num_added} new tokens to vocabulary")
+    print(f"Total vocabulary size: {len(tokenizer)}")
     
     return tokenizer
 
@@ -193,7 +194,7 @@ def main():
     
     TRAIN_PATH = project_root / 'data' / 'train_test_split' / 'train.txt'
     VAL_PATH = project_root / 'data' / 'train_test_split' / 'val.txt'
-    MODEL_OUTPUT_DIR = project_root / 'models' / 'trading_llm'
+    MODEL_OUTPUT_DIR = project_root / 'models' / 'tradebot'
     
     if not TRAIN_PATH.exists():
         print(f"\nERROR: Training data not found at {TRAIN_PATH}")
@@ -210,9 +211,10 @@ def main():
         print(f"  3. Run script with: sudo python src/02_train_model.py (not recommended)")
         sys.exit(1)
     
-    BLOCK_SIZE = 128
-    BATCH_SIZE = 16
-    NUM_EPOCHS = 150
+    # Sequences are now ~19 tokens (up from 7) with expanded vocabulary
+    BLOCK_SIZE = 256
+    BATCH_SIZE = 8
+    NUM_EPOCHS = 200
     LEARNING_RATE = 1e-3
     
     # Use GPU if available
@@ -271,14 +273,23 @@ def main():
         eval_dataset=val_dataset,
     )
     
-    # Step 7: Train!
-    print("\n6. Starting training...")
+    # Step 7: Check for existing checkpoints to resume from
+    print("\n6. Checking for existing checkpoints...")
+    checkpoints = sorted(MODEL_OUTPUT_DIR.glob("checkpoint-*"))
+    resume_from = None
+    if checkpoints:
+        resume_from = str(checkpoints[-1])
+        print(f"   Resuming from checkpoint: {resume_from}")
+    else:
+        print("   No checkpoints found, starting fresh training...")
+    
+    print(f"\n7. Starting training...")
     print(f"   Epochs: {NUM_EPOCHS}")
     print(f"   Batch size: {BATCH_SIZE}")
     print(f"   Learning rate: {LEARNING_RATE}")
     print("\nThis may take 1-2 hours on CPU, 15-30 minutes on GPU...\n")
     
-    trainer.train()
+    trainer.train(resume_from_checkpoint=resume_from)
     
     # Step 8: Save final model
     print("\n7. Saving final model...")

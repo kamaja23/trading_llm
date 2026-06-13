@@ -221,7 +221,7 @@ def main():
     print("=" * 60)
     
     # Paths
-    MODEL_PATH = project_root / 'models' / 'trading_llm' / 'final_model'
+    MODEL_PATH = project_root / 'models' / 'tradebot' / 'final_model'
     TEST_PATH = project_root / 'data' / 'train_test_split' / 'test.txt'
     
     # Check if model exists

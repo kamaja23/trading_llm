@@ -204,7 +204,7 @@ def main():
     print("=" * 60)
     
     # Paths
-    MODEL_PATH = project_root / 'models' / 'trading_llm' / 'final_model'
+    MODEL_PATH = project_root / 'models' / 'tradebot' / 'final_model'
     
     # Check if model exists
     if not MODEL_PATH.exists():

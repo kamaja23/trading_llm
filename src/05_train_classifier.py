@@ -99,11 +99,11 @@ def create_dataloader(data, batch_size=32, shuffle=True):
 
 
 def train_classifier():
-    MODEL_PATH = project_root / "models" / "trading_llm" / "final_model"
+    MODEL_PATH = project_root / "models" / "tradebot" / "final_model"
     TRAIN_PATH = project_root / "data" / "train_test_split" / "train.txt"
     VAL_PATH = project_root / "data" / "train_test_split" / "val.txt"
     TEST_PATH = project_root / "data" / "train_test_split" / "test.txt"
-    SAVE_PATH = project_root / "models" / "trading_llm" / "classifier.pt"
+    SAVE_PATH = project_root / "models" / "tradebot" / "classifier.pt"
 
     print("=" * 60)
     print("STEP 5: TRAIN CLASSIFICATION HEAD")

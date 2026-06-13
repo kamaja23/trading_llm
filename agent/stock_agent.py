@@ -1,5 +1,5 @@
 """
-Stock Analysis Agent - analyzes stocks using the trained trading LLM.
+Stock Analysis Agent - analyzes stocks using the trained TradeBot model.
 
 Fetches live market data, computes technical indicators, runs model inference,
 and returns BUY/SELL/HOLD predictions with confidence scores.
@@ -23,17 +23,35 @@ from utils.token_definitions import ACTION_TOKENS
 
 
 BULLISH_INDICATORS = {
-    "trend": ("ST_UpTrend",),
-    "volume": ("Hi_Volume",),
-    "heikin_ashi": ("HA_UpCross",),
+    "trend": ("TR_StrongUp", "TR_Up", "TR_WeakUp"),
+    "volume": ("VOL_High", "VOL_Surge"),
+    "heikin_ashi": ("HA_UpCross", "HA_UpTrend"),
     "stochastic": ("STO_Cross", "STO_Oversold"),
+    "rsi": ("RSI_Oversold", "RSI_Bullish"),
+    "macd": ("MACD_BullishCross", "MACD_Positive", "MACD_DivBullish"),
+    "bb": ("BB_LowerTouch", "BB_AboveMid"),
+    "ma_cross": ("MA_GoldenCross", "MA_Bullish"),
+    "candle": ("CP_Hammer", "CP_EngulfBull", "CP_MorningStar", "CP_MarubozuBull"),
+    "obv": ("OBV_Rising", "OBV_DivBull"),
+    "price_action": ("PA_BreakoutUp", "PA_SupportTest", "PA_GapUp"),
+    "market_context": ("MKT_Bullish", "MKT_Oversold"),
+    "sentiment": ("SENT_StrongPos", "SENT_Positive"),
 }
 
 BEARISH_INDICATORS = {
-    "trend": ("ST_DownTrend",),
-    "volume": ("Lo_Volume",),
-    "heikin_ashi": ("HA_DownCross",),
-    "stochastic": ("STO_Cross", "STO_Overbought"),
+    "trend": ("TR_StrongDown", "TR_Down", "TR_WeakDown"),
+    "volume": ("VOL_Low", "VOL_Dead"),
+    "heikin_ashi": ("HA_DownCross", "HA_DownTrend"),
+    "stochastic": ("STO_DownCross", "STO_Overbought"),
+    "rsi": ("RSI_Overbought", "RSI_Bearish"),
+    "macd": ("MACD_BearishCross", "MACD_Negative", "MACD_DivBearish"),
+    "bb": ("BB_UpperTouch", "BB_BelowMid"),
+    "ma_cross": ("MA_DeathCross", "MA_Bearish"),
+    "candle": ("CP_ShootingStar", "CP_EngulfBear", "CP_EveningStar", "CP_MarubozuBear"),
+    "obv": ("OBV_Falling", "OBV_DivBear"),
+    "price_action": ("PA_BreakoutDown", "PA_ResistanceTest", "PA_GapDown"),
+    "market_context": ("MKT_Bearish", "MKT_Overbought"),
+    "sentiment": ("SENT_StrongNeg", "SENT_Negative"),
 }
 
 INDICATOR_LABELS = {
@@ -41,22 +59,145 @@ INDICATOR_LABELS = {
     "volume": "Volume vs MA(20)",
     "heikin_ashi": "Heikin Ashi Signal",
     "stochastic": "Stochastic (14,3)",
+    "rsi": "RSI (14)",
+    "macd": "MACD (12,26,9)",
+    "bb": "Bollinger Bands (20,2)",
+    "ma_cross": "MA Crossover (50/200)",
+    "volatility": "Volatility (ATR)",
+    "candle": "Candle Pattern",
+    "obv": "On-Balance Volume",
+    "atr": "Average True Range",
+    "price_action": "Price Action",
+    "market_context": "Market Context",
+    "relative": "Relative Strength",
+    "sentiment": "News Sentiment",
+    "social": "Social Media",
 }
 
 INDICATOR_VALUES = {
-    "ST_UpTrend": "Price > 2% above MA — Uptrend",
-    "ST_DownTrend": "Price > 2% below MA — Downtrend",
-    "ST_Flat": "Price within 2% of MA — Neutral",
-    "Hi_Volume": "Volume > 20% above average",
-    "Lo_Volume": "Volume > 20% below average",
-    "Avg_Volume": "Volume near average",
+    # Trend
+    "TR_StrongUp": "Price > 5% above MA — Strong Uptrend",
+    "TR_Up": "Price > 2% above MA — Uptrend",
+    "TR_WeakUp": "Price slightly above MA — Weak Uptrend",
+    "TR_Flat": "Price within 0.5% of MA — Neutral",
+    "TR_WeakDown": "Price slightly below MA — Weak Downtrend",
+    "TR_Down": "Price > 2% below MA — Downtrend",
+    "TR_StrongDown": "Price > 5% below MA — Strong Downtrend",
+    # Volume
+    "VOL_Surge": "Volume > 2x average — Volume Surge",
+    "VOL_High": "Volume > 20% above average",
+    "VOL_Normal": "Volume near average",
+    "VOL_Low": "Volume > 20% below average",
+    "VOL_Dead": "Volume < 50% of average — Dead Volume",
+    # Heikin Ashi
     "HA_UpCross": "Bullish Heikin Ashi crossover",
     "HA_DownCross": "Bearish Heikin Ashi crossover",
+    "HA_UpTrend": "Sustained bullish HA candles (3+)",
+    "HA_DownTrend": "Sustained bearish HA candles (3+)",
     "HA_Neutral": "No Heikin Ashi signal",
-    "STO_Cross": "Stochastic %K crossing %D",
+    # Stochastic
+    "STO_Cross": "Stochastic %K crossing above %D — Bullish",
+    "STO_DownCross": "Stochastic %K crossing below %D — Bearish",
     "STO_NoCross": "No stochastic crossover",
     "STO_Oversold": "Stochastic below 20 — Oversold",
     "STO_Overbought": "Stochastic above 80 — Overbought",
+    # RSI
+    "RSI_Oversold": "RSI below 30 — Oversold",
+    "RSI_Overbought": "RSI above 70 — Overbought",
+    "RSI_Bullish": "RSI 50-70 — Bullish momentum",
+    "RSI_Bearish": "RSI 30-50 — Bearish momentum",
+    "RSI_Neutral": "RSI around 50 — Neutral",
+    # MACD
+    "MACD_BullishCross": "MACD crossed above signal line — Bullish",
+    "MACD_BearishCross": "MACD crossed below signal line — Bearish",
+    "MACD_Positive": "MACD above zero — Positive momentum",
+    "MACD_Negative": "MACD below zero — Negative momentum",
+    "MACD_Neutral": "MACD no clear signal",
+    "MACD_DivBullish": "Bullish divergence — price down, MACD up",
+    "MACD_DivBearish": "Bearish divergence — price up, MACD down",
+    # Bollinger Bands
+    "BB_UpperTouch": "Price touching upper band — Overextended",
+    "BB_LowerTouch": "Price touching lower band — Oversold bounce potential",
+    "BB_AboveMid": "Price above middle band — Bullish",
+    "BB_BelowMid": "Price below middle band — Bearish",
+    "BB_Squeeze": "Band squeeze — Low volatility, breakout imminent",
+    "BB_Expand": "Band expansion — High volatility",
+    "BB_Neutral": "Normal range within bands",
+    # MA Crossover
+    "MA_GoldenCross": "50-day crossed above 200-day — Bullish",
+    "MA_DeathCross": "50-day crossed below 200-day — Bearish",
+    "MA_Bullish": "Short-term MA above long-term MA",
+    "MA_Bearish": "Short-term MA below long-term MA",
+    "MA_Neutral": "Mixed or no crossover",
+    # Volatility
+    "VIX_High": "High volatility regime",
+    "VIX_Moderate": "Moderate volatility",
+    "VIX_Low": "Low volatility regime",
+    # Candle Patterns
+    "CP_Doji": "Doji — Market indecision",
+    "CP_Hammer": "Hammer — Potential bullish reversal",
+    "CP_ShootingStar": "Shooting Star — Potential bearish reversal",
+    "CP_EngulfBull": "Bullish Engulfing — Strong buying pressure",
+    "CP_EngulfBear": "Bearish Engulfing — Strong selling pressure",
+    "CP_MorningStar": "Morning Star — Bullish reversal pattern",
+    "CP_EveningStar": "Evening Star — Bearish reversal pattern",
+    "CP_MarubozuBull": "Bullish Marubozu — Strong bullish candle",
+    "CP_MarubozuBear": "Bearish Marubozu — Strong bearish candle",
+    "CP_SpinningTop": "Spinning Top — Indecision",
+    "CP_NoPattern": "No recognizable pattern",
+    # OBV
+    "OBV_Rising": "OBV trending up — Accumulation",
+    "OBV_Falling": "OBV trending down — Distribution",
+    "OBV_Flat": "OBV sideways — Neutral",
+    "OBV_DivBull": "Bullish divergence — Price down, OBV up",
+    "OBV_DivBear": "Bearish divergence — Price up, OBV down",
+    # ATR
+    "ATR_High": "High ATR — Very volatile",
+    "ATR_Rising": "ATR rising — Volatility increasing",
+    "ATR_Falling": "ATR falling — Volatility decreasing",
+    "ATR_Low": "Low ATR — Calm market",
+    # Price Action
+    "PA_BreakoutUp": "Price broke above resistance on volume",
+    "PA_BreakoutDown": "Price broke below support on volume",
+    "PA_ResistanceTest": "Price testing resistance level",
+    "PA_SupportTest": "Price testing support level",
+    "PA_NewHigh": "New recent high",
+    "PA_NewLow": "New recent low",
+    "PA_RangeBound": "Trading in a range",
+    "PA_GapUp": "Gap up open",
+    "PA_GapDown": "Gap down open",
+    # Market Context
+    "MKT_Bullish": "Market in bullish phase",
+    "MKT_Bearish": "Market in bearish phase",
+    "MKT_Neutral": "Mixed market signals",
+    "MKT_Volatile": "High volatility environment",
+    "MKT_Calm": "Low volatility environment",
+    "MKT_Overbought": "Broad market overbought",
+    "MKT_Oversold": "Broad market oversold",
+    # Sentiment
+    "SENT_StrongPos": "Very positive news sentiment",
+    "SENT_Positive": "Positive news sentiment",
+    "SENT_Neutral": "Neutral news sentiment",
+    "SENT_Negative": "Negative news sentiment",
+    "SENT_StrongNeg": "Very negative news sentiment",
+    "SENT_NoData": "No sentiment data available",
+    # News
+    "NEWS_MajorPos": "Major positive news event",
+    "NEWS_MinorPos": "Minor positive news",
+    "NEWS_Neutral": "Neutral news",
+    "NEWS_MinorNeg": "Minor negative news",
+    "NEWS_MajorNeg": "Major negative news event",
+    "NEWS_None": "No significant news",
+    # Social
+    "SOC_HighBuzz": "High social media activity",
+    "SOC_Moderate": "Moderate social media activity",
+    "SOC_Low": "Low social media activity",
+    "SOC_Silent": "Very low social media activity",
+    # Relative
+    "REL_Strong": "Strong relative performance vs sector",
+    "REL_Inline": "In line with sector performance",
+    "REL_Weak": "Weak relative performance vs sector",
+    "REL_Unknown": "Cannot determine relative strength",
 }
 
 
@@ -86,7 +227,7 @@ class StockAnalysisError(Exception):
 
 class StockAnalysisAgent:
 
-    MODEL_PATH = project_root / 'models' / 'trading_llm' / 'final_model'
+    MODEL_PATH = project_root / 'models' / 'tradebot' / 'final_model'
 
     def __init__(self, model_path: Optional[str] = None):
         path = Path(model_path) if model_path else self.MODEL_PATH
@@ -112,9 +253,11 @@ class StockAnalysisAgent:
         return ids
 
     def _resolve_symbol_token(self, ticker: str) -> str:
-        t = ticker.upper()
-        if t in {"SPY", "QQQ", "DIA", "IWM"}:
-            return f"<SYM_{t}>"
+        t = ticker.upper().replace('.', '_')
+        token = f"<SYM_{t}>"
+        from utils.token_definitions import SYMBOL_TOKENS
+        if token in SYMBOL_TOKENS:
+            return token
         return "<SYM_SPY>"
 
     def fetch_data(
@@ -231,7 +374,12 @@ class StockAnalysisAgent:
         if len(train_df) < 10:
             return None
 
-        feature_cols = ["trend_token", "volume_token", "ha_token", "sto_token"]
+        feature_cols = [
+            "trend_token", "volume_token", "ha_token", "sto_token",
+            "rsi_token", "macd_token", "bb_token", "ma_cross_token",
+            "volatility_token", "candle_token", "obv_token",
+            "price_action_token", "market_context_token",
+        ]
         try:
             from sklearn.dummy import DummyClassifier
             from sklearn.ensemble import RandomForestClassifier
@@ -249,19 +397,14 @@ class StockAnalysisAgent:
             classifier = DummyClassifier(strategy="most_frequent")
         else:
             classifier = RandomForestClassifier(
-                n_estimators=80,
-                max_depth=4,
+                n_estimators=120,
+                max_depth=5,
                 min_samples_leaf=2,
                 random_state=42,
             )
         classifier.fit(x_train, y_train)
 
-        latest_features = {
-            "trend_token": latest["trend_token"],
-            "volume_token": latest["volume_token"],
-            "ha_token": latest["ha_token"],
-            "sto_token": latest["sto_token"],
-        }
+        latest_features = {col: latest[col] for col in feature_cols}
         x_latest = vectorizer.transform([latest_features])
         probs_raw = classifier.predict_proba(x_latest)[0]
         action_probs = {action: 0.0 for action in ACTION_TOKENS}
@@ -305,12 +448,29 @@ class StockAnalysisAgent:
             "volume": latest["volume_token"],
             "heikin_ashi": latest["ha_token"],
             "stochastic": latest["sto_token"],
+            "rsi": latest["rsi_token"],
+            "macd": latest["macd_token"],
+            "bb": latest["bb_token"],
+            "ma_cross": latest["ma_cross_token"],
+            "volatility": latest["volatility_token"],
+            "candle": latest["candle_token"],
+            "obv": latest["obv_token"],
+            "atr": latest["atr_token"],
+            "price_action": latest["price_action_token"],
+            "market_context": latest["market_context_token"],
+            "relative": latest["relative_token"],
         }
 
         input_sequence = (
             f"{symbol_token} <TF_DAILY> "
             f"{indicators['trend']} {indicators['volume']} "
-            f"{indicators['heikin_ashi']} {indicators['stochastic']}"
+            f"{indicators['heikin_ashi']} {indicators['stochastic']} "
+            f"{indicators['rsi']} {indicators['macd']} "
+            f"{indicators['bb']} {indicators['ma_cross']} "
+            f"{indicators['volatility']} {indicators['candle']} "
+            f"{indicators['obv']} {indicators['atr']} "
+            f"{indicators['price_action']} {indicators['market_context']} "
+            f"{indicators['relative']}"
         )
 
         prediction = self._predict(input_sequence)
@@ -322,7 +482,7 @@ class StockAnalysisAgent:
             training_accuracy = stock_classifier["training_accuracy"]
         else:
             displayed_prediction = prediction
-            prediction_source = "Trading LLM next-token model"
+            prediction_source = "TradeBot next-token model"
             training_samples = 0
             training_accuracy = None
 
@@ -418,12 +578,29 @@ class StockAnalysisAgent:
             "volume": latest["volume_token"],
             "heikin_ashi": latest["ha_token"],
             "stochastic": latest["sto_token"],
+            "rsi": latest["rsi_token"],
+            "macd": latest["macd_token"],
+            "bb": latest["bb_token"],
+            "ma_cross": latest["ma_cross_token"],
+            "volatility": latest["volatility_token"],
+            "candle": latest["candle_token"],
+            "obv": latest["obv_token"],
+            "atr": latest["atr_token"],
+            "price_action": latest["price_action_token"],
+            "market_context": latest["market_context_token"],
+            "relative": latest["relative_token"],
         }
 
         input_sequence = (
             f"{symbol_token} <TF_DAILY> "
             f"{indicators['trend']} {indicators['volume']} "
-            f"{indicators['heikin_ashi']} {indicators['stochastic']}"
+            f"{indicators['heikin_ashi']} {indicators['stochastic']} "
+            f"{indicators['rsi']} {indicators['macd']} "
+            f"{indicators['bb']} {indicators['ma_cross']} "
+            f"{indicators['volatility']} {indicators['candle']} "
+            f"{indicators['obv']} {indicators['atr']} "
+            f"{indicators['price_action']} {indicators['market_context']} "
+            f"{indicators['relative']}"
         )
 
         prediction = self._predict(input_sequence)
@@ -435,7 +612,7 @@ class StockAnalysisAgent:
             training_accuracy = stock_classifier["training_accuracy"]
         else:
             displayed_prediction = prediction
-            prediction_source = "Trading LLM next-token model"
+            prediction_source = "TradeBot next-token model"
             training_samples = 0
             training_accuracy = None
 

@@ -1,4 +1,4 @@
-# Trading LLM Hello World
+# TradeBot
 
 **Version 1.2** - AMD RX 7800 XT ROCm support
 
@@ -75,24 +75,24 @@ See [RX7800XT_SETUP.md](RX7800XT_SETUP.md) for detailed setup guide.
 
 ```bash
 # Build the image
-docker build -t trading-llm .
+docker build -t tradebot .
 
 # Run the Streamlit app (mount your trained model)
 docker run -p 8501:8501 \
   -v /path/to/your/models:/app/models \
-  trading-llm
+  tradebot
 
 # Run with live market data (set API keys via -e)
 docker run -p 8501:8501 \
   -v /path/to/your/models:/app/models \
   -e ALPHA_VANTAGE_API_KEY=your_key \
-  trading-llm
+  tradebot
 
 # Run a different command (train, data gen, test, etc.)
 docker run --rm \
   -v /path/to/your/models:/app/models \
   -v /path/to/your/data:/app/data \
-  trading-llm \
+  tradebot \
   python src/02_train_model.py
 ```
 
@@ -137,7 +137,7 @@ Test the model with custom market state inputs.
 ## Project Structure
 
 ```
-trading_llm_hello_world/
+tradebot/
 ├── README.md
 ├── requirements.txt
 ├── data/
@@ -145,7 +145,7 @@ trading_llm_hello_world/
 │   ├── processed/        # Token sequences
 │   └── train_test_split/ # Training/test datasets
 ├── models/
-│   └── trading_llm/      # Saved model checkpoints
+│   └── tradebot/         # Saved model checkpoints
 ├── src/
 │   ├── 01_generate_training_data.py
 │   ├── 02_train_model.py

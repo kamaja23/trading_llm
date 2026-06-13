@@ -1,4 +1,4 @@
-# Implementation Guide: Trading LLM Hello World
+# Implementation Guide: TradeBot
 
 ## Overview
 
