@@ -1,4 +1,4 @@
-# Trading LLM Hello World
+# TradeBot
 
 **Version 1.2** - AMD RX 7800 XT ROCm support
 
@@ -27,7 +27,7 @@ Demonstrate technical feasibility of using an LLM to learn trading patterns by:
 ## Architecture Overview
 
 ```
-Historical Price Data (SPY via yfinance)
+Historical Price Data (SPY via configured market data provider)
     ↓
 Token Generator (converts OHLCV → trading language tokens)
     ↓
@@ -71,6 +71,33 @@ python -c "import torch; print(f'ROCm: {torch.cuda.is_available()}')"
 
 See [RX7800XT_SETUP.md](RX7800XT_SETUP.md) for detailed setup guide.
 
+### Docker
+
+```bash
+# Build the image
+docker build -t tradebot .
+
+# Run the Streamlit app (mount your trained model)
+docker run -p 8501:8501 \
+  -v /path/to/your/models:/app/models \
+  tradebot
+
+# Run with live market data (set API keys via -e)
+docker run -p 8501:8501 \
+  -v /path/to/your/models:/app/models \
+  -e ALPHA_VANTAGE_API_KEY=your_key \
+  tradebot
+
+# Run a different command (train, data gen, test, etc.)
+docker run --rm \
+  -v /path/to/your/models:/app/models \
+  -v /path/to/your/data:/app/data \
+  tradebot \
+  python src/02_train_model.py
+```
+
+Note: The image does not bundle model or data files — they are mounted as volumes.
+
 ## Usage
 
 ### Step 1: Generate Training Data
@@ -78,6 +105,16 @@ See [RX7800XT_SETUP.md](RX7800XT_SETUP.md) for detailed setup guide.
 python src/01_generate_training_data.py
 ```
 This downloads SPY historical data and generates token sequences.
+Set `ALPHA_VANTAGE_API_KEY` or `STOOQ_API_KEY` to use live data; otherwise the
+generator falls back to the included sample data.
+
+For the Streamlit demo, add a live data key in `.env`:
+
+```bash
+cp .env.example .env
+# Edit .env and set ALPHA_VANTAGE_API_KEY
+.venv/bin/streamlit run app.py
+```
 
 ### Step 2: Train the Model
 ```bash
@@ -100,7 +137,7 @@ Test the model with custom market state inputs.
 ## Project Structure
 
 ```
-trading_llm_hello_world/
+tradebot/
 ├── README.md
 ├── requirements.txt
 ├── data/
@@ -108,7 +145,7 @@ trading_llm_hello_world/
 │   ├── processed/        # Token sequences
 │   └── train_test_split/ # Training/test datasets
 ├── models/
-│   └── trading_llm/      # Saved model checkpoints
+│   └── tradebot/         # Saved model checkpoints
 ├── src/
 │   ├── 01_generate_training_data.py
 │   ├── 02_train_model.py

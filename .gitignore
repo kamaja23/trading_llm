@@ -1,13 +1,14 @@
 # Model checkpoints and outputs (LARGE FILES - DO NOT COMMIT)
-models/trading_llm/checkpoint-*/
-models/trading_llm/final_model/
-models/trading_llm/*.safetensors
-models/trading_llm/*.pt
-models/trading_llm/*.bin
-models/trading_llm/logs/
+models/tradebot/checkpoint-*/
+models/tradebot/final_model/
+models/tradebot/*.safetensors
+models/tradebot/*.pt
+models/tradebot/*.bin
+models/tradebot/logs/
 models/synthetic_verification/checkpoint-*/
 models/synthetic_verification/*.safetensors
 models/synthetic_verification/*.pt
+models/tradebot_bak/
 
 # Training outputs
 *.pth
@@ -63,10 +64,20 @@ ehthumbs.db
 *.log
 logs/
 
+# Secrets
+.env
+
 # Temporary files
 *.tmp
 *.bak
 *~
+
+# Architecture defense (internal review only)
+architecture_defense.pdf
+generate_defense.py
+
+# Harness documentation
+HARNESS.md
 
 # Keep directory structure
 !.gitkeep

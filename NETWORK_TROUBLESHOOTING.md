@@ -158,7 +158,7 @@ You can:
 
 The sample data path is:
 ```
-trading_llm_hello_world/data/raw/SPY_sample_data.csv
+tradebot/data/raw/SPY_sample_data.csv
 ```
 
 It's a standard CSV that you can open in Excel/LibreOffice to inspect.

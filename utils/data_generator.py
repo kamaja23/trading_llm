@@ -2,17 +2,19 @@
 Data generator module for converting OHLCV price data into token sequences.
 
 This module downloads historical data and converts it into the trading language
-format suitable for training an LLM.
+format suitable for training an LLM. Now with expanded vocabulary including
+RSI, MACD, Bollinger Bands, candle patterns, and sentiment.
 """
 
 import pandas as pd
-import yfinance as yf
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 import os
 from pathlib import Path
 
+from utils.market_data import MarketDataError, fetch_market_data
 from utils.token_definitions import get_symbol_token, get_timeframe_token
 from utils.indicators import add_all_indicators
+from utils.news_sentiment import fetch_aggregated_sentiment
 
 
 def download_price_data(
@@ -24,7 +26,7 @@ def download_price_data(
     sample_data_path: str = None
 ) -> pd.DataFrame:
     """
-    Download historical price data using yfinance, or load sample data if offline.
+    Download historical price data, or load sample data if offline.
     
     Args:
         symbol: Ticker symbol (e.g., 'SPY')
@@ -38,12 +40,10 @@ def download_price_data(
         DataFrame with OHLCV data
     """
     if use_sample_data or sample_data_path:
-        # Load from sample data
         if sample_data_path and os.path.exists(sample_data_path):
             print(f"Loading sample data from {sample_data_path}...")
             df = pd.read_csv(sample_data_path, index_col=0, parse_dates=True)
         else:
-            # Try default sample data location
             default_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'raw', 'SPY_sample_data.csv')
             if os.path.exists(default_path):
                 print(f"Loading sample data from {default_path}...")
@@ -56,7 +56,6 @@ def download_price_data(
         
         print(f"Loaded {len(df)} days of sample data")
         
-        # Filter by date range if specified
         if start_date:
             df = df[df.index >= start_date]
         if end_date:
@@ -64,15 +63,13 @@ def download_price_data(
         
         print(f"Filtered to {len(df)} days in date range")
     else:
-        # Download from yfinance
-        print(f"Downloading {symbol} data from {start_date} to {end_date}...")
+        print(f"Downloading {symbol} data ({start_date} to {end_date})...")
         
         try:
-            ticker = yf.Ticker(symbol)
-            df = ticker.history(start=start_date, end=end_date)
-        except Exception as e:
-            print(f"\n⚠️  Failed to download data: {e}")
-            print("Attempting to use sample data instead...")
+            df = fetch_market_data(symbol, start_date=start_date, end_date=end_date)
+        except MarketDataError as e:
+            print(f"\n  Failed to download data: {e}")
+            print("  Attempting to use sample data instead...")
             return download_price_data(
                 symbol=symbol,
                 start_date=start_date,
@@ -82,7 +79,7 @@ def download_price_data(
             )
         
         if df.empty:
-            print("\n⚠️  No data downloaded, attempting to use sample data instead...")
+            print("\n  No data downloaded, attempting to use sample data instead...")
             return download_price_data(
                 symbol=symbol,
                 start_date=start_date,
@@ -93,7 +90,6 @@ def download_price_data(
         
         print(f"Downloaded {len(df)} days of data")
     
-    # Ensure we have the expected columns
     required_cols = ['Open', 'High', 'Low', 'Close', 'Volume']
     if not all(col in df.columns for col in required_cols):
         raise ValueError(f"Missing required columns in data. Found: {df.columns.tolist()}")
@@ -109,30 +105,35 @@ def download_price_data(
 def generate_token_sequences(
     df: pd.DataFrame,
     symbol: str,
-    timeframe: str = "DAILY"
+    timeframe: str = "DAILY",
+    include_sentiment: bool = False,
 ) -> List[str]:
     """
-    Convert OHLCV DataFrame into token sequences.
-    
+    Convert OHLCV DataFrame into token sequences with expanded vocabulary.
+
     Args:
         df: DataFrame with OHLCV data and indicators
         symbol: Trading symbol
         timeframe: Timeframe string
-        
+        include_sentiment: If True, attempt to fetch news/sentiment data
+
     Returns:
         List of token sequences (strings)
     """
     sequences = []
     
-    # Get symbol and timeframe tokens
     sym_token = get_symbol_token(symbol)
     tf_token = get_timeframe_token(timeframe)
     
-    # Add indicators to dataframe
     df = add_all_indicators(df)
-    
-    # Drop rows with NaN values (from indicator calculations)
     df = df.dropna()
+    
+    sentiment_data = None
+    if include_sentiment:
+        try:
+            sentiment_data = fetch_aggregated_sentiment(symbol)
+        except Exception:
+            sentiment_data = None
     
     for idx, row in df.iterrows():
         sequence_parts = [
@@ -142,9 +143,24 @@ def generate_token_sequences(
             row['volume_token'],
             row['ha_token'],
             row['sto_token'],
+            row['rsi_token'],
+            row['macd_token'],
+            row['bb_token'],
+            row['ma_cross_token'],
+            row['volatility_token'],
+            row['candle_token'],
+            row['obv_token'],
+            row['atr_token'],
+            row['price_action_token'],
+            row['market_context_token'],
+            row['relative_token'],
         ]
         
-        # Join with spaces, then append action WITHOUT space
+        if sentiment_data:
+            sequence_parts.append(sentiment_data['sentiment_token'])
+            sequence_parts.append(sentiment_data['news_token'])
+            sequence_parts.append(sentiment_data['social_token'])
+        
         sequence = " ".join(sequence_parts) + " " + row['action_token']
         sequences.append(sequence)
     
@@ -171,7 +187,6 @@ def split_sequences(
     train_size = int(n * train_ratio)
     val_size = int(n * val_ratio)
     
-    # Chronological split (important for time series!)
     train_sequences = sequences[:train_size]
     val_sequences = sequences[train_size:train_size + val_size]
     test_sequences = sequences[train_size + val_size:]
@@ -228,15 +243,13 @@ def analyze_sequences(sequences: List[str]) -> None:
     if not sequences:
         return
     
-    # Analyze sequence lengths
     lengths = [len(seq.split()) for seq in sequences]
     print(f"Tokens per sequence: {lengths[0]} (all sequences should be same length)")
     
-    # Count action token distribution
     action_counts = {'BUY': 0, 'SELL': 0, 'HOLD': 0}
     for seq in sequences:
         tokens = seq.split()
-        action = tokens[-1]  # Last token is the action
+        action = tokens[-1]
         if action in action_counts:
             action_counts[action] += 1
     
@@ -244,6 +257,14 @@ def analyze_sequences(sequences: List[str]) -> None:
     for action, count in action_counts.items():
         pct = (count / len(sequences)) * 100
         print(f"  {action}: {count} ({pct:.1f}%)")
+    
+    print(f"\nToken category distribution (first tokens only):")
+    from utils.token_definitions import get_token_category
+    for seq in sequences[:1]:
+        tokens = seq.split()
+        for i, token in enumerate(tokens):
+            cat = get_token_category(token)
+            print(f"  [{i:2d}] {token:25s} → {cat}")
     
     print(f"\nFirst 3 sequences:")
     for seq in sequences[:3]:
@@ -255,18 +276,16 @@ def analyze_sequences(sequences: List[str]) -> None:
 
 
 if __name__ == "__main__":
-    # Test the data generation pipeline
-    print("Testing data generation pipeline...\n")
+    print("Testing expanded data generation pipeline...\n")
     
-    # Download data
+    from utils.token_definitions import ALL_CUSTOM_TOKENS
+    print(f"Vocabulary size: {len(ALL_CUSTOM_TOKENS)} custom tokens\n")
+    
     df = download_price_data('SPY', start_date='2023-01-01', end_date='2024-01-01')
     
-    # Generate sequences
     sequences = generate_token_sequences(df, symbol='SPY', timeframe='DAILY')
     
-    # Analyze
     analyze_sequences(sequences)
     
-    # Test split
     train, val, test = split_sequences(sequences)
     print(f"\nSplit sizes: Train={len(train)}, Val={len(val)}, Test={len(test)}")

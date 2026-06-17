@@ -107,6 +107,6 @@ This may take 1-2 hours on CPU, 15-30 minutes on GPU...
 TRAINING COMPLETE!
 ============================================================
 
-Model saved to: /home/andrei/trading_llm/models/trading_llm/final_model
+Model saved to: /home/andrei/tradebot/models/tradebot/final_model
 
 Next step: Run 03_test_model.py

@@ -79,7 +79,7 @@
 
 ```bash
 # 1. Backup your trained models (if any)
-cp -r models/trading_llm/final_model ~/model_backup
+cp -r models/tradebot/final_model ~/model_backup
 
 # 2. Pull latest code
 git pull origin main
@@ -96,8 +96,8 @@ python src/02_train_model.py
 
 ```bash
 # 1. Clone repository
-git clone https://github.com/YOUR_USERNAME/trading_llm.git
-cd trading_llm
+git clone https://github.com/YOUR_USERNAME/tradebot.git
+cd tradebot
 
 # 2. Create virtual environment
 python -m venv .venv
