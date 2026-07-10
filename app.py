@@ -80,6 +80,32 @@ def get_agent():
 agent = get_agent()
 init_db()
 
+COMPANY_NAMES = {
+    "AAPL": "Apple",
+    "MSFT": "Microsoft",
+    "NVDA": "NVIDIA",
+    "GOOGL": "Alphabet",
+    "SPY": "S&P 500 ETF",
+    "QQQ": "Nasdaq-100 ETF",
+}
+_DEFAULT_PRIVATE_ALIASES = {
+    "OPENAI": ("OpenAI", "Private company · no public stock ticker"),
+    "OPEN AI": ("OpenAI", "Private company · no public stock ticker"),
+    "ANTHROPIC": ("Anthropic", "Private company · no public stock ticker"),
+    "CLAUDE": ("Anthropic", "Private company · no public stock ticker"),
+    "XAI": ("xAI", "Private company · no public stock ticker"),
+    "X.AI": ("xAI", "Private company · no public stock ticker"),
+    "STRIPE": ("Stripe", "Private company · no public stock ticker"),
+    "DATABRICKS": ("Databricks", "Private company · no public stock ticker"),
+    "PERPLEXITY": ("Perplexity", "Private company · no public stock ticker"),
+    "ANDURIL": ("Anduril", "Private company · no public stock ticker"),
+    "VALVE": ("Valve Corporation", "Private company · no public stock ticker"),
+    "VALVE CORPORATION": (
+        "Valve Corporation",
+        "Private company · no public stock ticker",
+    ),
+}
+
 # ── Auth session state ──────────────────────────────────────────────
 if "user" not in st.session_state:
     st.session_state.user = None
@@ -87,6 +113,10 @@ if "auth_token" not in st.session_state:
     st.session_state.auth_token = None
 if "_auth_restored" not in st.session_state:
     st.session_state._auth_restored = False
+if "watchlist" not in st.session_state:
+    st.session_state.watchlist = []
+if "company_names" not in st.session_state:
+    st.session_state.company_names = COMPANY_NAMES.copy()
 
 # Restore session from query param token (survives page refresh)
 if not st.session_state._auth_restored:
@@ -109,43 +139,14 @@ if st.session_state.user and not st.session_state.watchlist:
                 st.session_state.company_names[ticker] = s["company_name"]
 
 DEMO_VERSION = "clarify_unresolved_stock_lookup"
-DEFAULT_WATCHLIST: list[str] = []
-DEFAULT_PRIVATE_COMPANIES: list[tuple[str, str]] = []
 DEMO_END_DATE = (date.today() - timedelta(days=1)).isoformat()
 DEMO_START_DATE = (date.fromisoformat(DEMO_END_DATE) - timedelta(days=365)).isoformat()
-COMPANY_NAMES = {
-    "AAPL": "Apple",
-    "MSFT": "Microsoft",
-    "NVDA": "NVIDIA",
-    "GOOGL": "Alphabet",
-    "SPY": "S&P 500 ETF",
-    "QQQ": "Nasdaq-100 ETF",
-}
 TICKER_ALIASES = {
     "APPLE": "AAPL",
     "MICROSOFT": "MSFT",
     "NVIDIA": "NVDA",
     "GOOGLE": "GOOGL",
     "ALPHABET": "GOOGL",
-}
-_DEFAULT_PRIVATE_ALIASES = {
-    "OPENAI": ("OpenAI", "Private company · no public stock ticker"),
-    "OPEN AI": ("OpenAI", "Private company · no public stock ticker"),
-    "ANTHROPIC": ("Anthropic", "Private company · no public stock ticker"),
-    "CLAUDE": ("Anthropic", "Private company · no public stock ticker"),
-    "SPACEX": ("SpaceX", "Private company · no public stock ticker"),
-    "SPACE X": ("SpaceX", "Private company · no public stock ticker"),
-    "XAI": ("xAI", "Private company · no public stock ticker"),
-    "X.AI": ("xAI", "Private company · no public stock ticker"),
-    "STRIPE": ("Stripe", "Private company · no public stock ticker"),
-    "DATABRICKS": ("Databricks", "Private company · no public stock ticker"),
-    "PERPLEXITY": ("Perplexity", "Private company · no public stock ticker"),
-    "ANDURIL": ("Anduril", "Private company · no public stock ticker"),
-    "VALVE": ("Valve Corporation", "Private company · no public stock ticker"),
-    "VALVE CORPORATION": (
-        "Valve Corporation",
-        "Private company · no public stock ticker",
-    ),
 }
 
 
@@ -176,17 +177,14 @@ def analyze_live_stock(ticker: str):
 
 if st.session_state.get("demo_version") != DEMO_VERSION:
     st.session_state.demo_version = DEMO_VERSION
-    st.session_state.watchlist = DEFAULT_WATCHLIST.copy()
+    st.session_state.watchlist = []
     st.session_state.analyses = {}
-    st.session_state.private_companies = DEFAULT_PRIVATE_COMPANIES.copy()
     st.session_state.company_names = COMPANY_NAMES.copy()
     st.session_state.private_aliases = _DEFAULT_PRIVATE_ALIASES.copy()
 elif "watchlist" not in st.session_state:
-    st.session_state.watchlist = DEFAULT_WATCHLIST.copy()
+    st.session_state.watchlist = []
 if "analyses" not in st.session_state:
     st.session_state.analyses = {}
-if "private_companies" not in st.session_state:
-    st.session_state.private_companies = DEFAULT_PRIVATE_COMPANIES.copy()
 if "company_names" not in st.session_state:
     st.session_state.company_names = COMPANY_NAMES.copy()
 if "pending_unresolved_stock" not in st.session_state:
@@ -195,10 +193,12 @@ if "stock_lookup_dialog" not in st.session_state:
     st.session_state.stock_lookup_dialog = None
 if "private_aliases" not in st.session_state:
     st.session_state.private_aliases = _DEFAULT_PRIVATE_ALIASES.copy()
+if "private_companies" not in st.session_state:
+    st.session_state.private_companies = []
 if "pending_private_add" not in st.session_state:
     st.session_state.pending_private_add = None
 if "live_mode" not in st.session_state:
-    st.session_state.live_mode = False
+    st.session_state.live_mode = True
 if "live_interval" not in st.session_state:
     st.session_state.live_interval = 30
 if "last_live_refresh" not in st.session_state:
@@ -392,21 +392,11 @@ def add_public_stock(ticker: str):
         st.toast(f"{ticker} already in watchlist")
         return
 
-    with st.spinner(f"Training on {ticker} data..."):
-        try:
-            analysis = analyze_demo_stock(ticker)
-        except Exception:
-            st.session_state.stock_lookup_dialog = (
-                "Could not find any relevant information."
-            )
-            st.rerun()
-            return
-
     st.session_state.watchlist.append(ticker)
-    st.session_state.analyses[ticker] = analysis
     if st.session_state.user:
         save_stock(st.session_state.user["user_id"], ticker,
                    st.session_state.company_names.get(ticker, ""))
+    st.toast(f"{ticker} added to watchlist")
     st.rerun()
 
 
@@ -669,31 +659,27 @@ with st.sidebar:
 
     st.divider()
     st.caption(
-        "Model analyzes 4 technical indicators (trend, volume, "
-        "Heikin Ashi, Stochastic). Demo loads local big-tech data from "
-        f"{DEMO_START_DATE} to {DEMO_END_DATE} (auto, refreshed daily). "
-        "Not financial advice."
+        "Model analyzes technical indicators (trend, volume, "
+        "Heikin Ashi, Stochastic, RSI, MACD, Bollinger Bands, and more). "
+        "Live data, auto-refreshed. Not financial advice."
     )
 
     # === Live Mode ===
     st.divider()
-    live_mode = st.toggle("Live Mode", value=st.session_state.live_mode, key="live_toggle")
-    st.session_state.live_mode = live_mode
+    st.markdown("**Live Mode** (enabled)")
+    interval = st.select_slider(
+        "Refresh interval",
+        options=[10, 30, 60, 120],
+        value=st.session_state.live_interval,
+        key="live_interval_slider",
+    )
+    st.session_state.live_interval = interval
 
-    if live_mode:
-        interval = st.select_slider(
-            "Refresh interval",
-            options=[10, 30, 60, 120],
-            value=st.session_state.live_interval,
-            key="live_interval_slider",
-        )
-        st.session_state.live_interval = interval
-
-        elapsed = time.time() - st.session_state.get("last_live_refresh", 0)
-        if st.session_state.last_live_refresh > 0:
-            st.caption(f"{int(elapsed)}s since last refresh · auto-refreshes every {interval}s")
-        else:
-            st.caption(f"Auto-refreshes every {interval}s (waiting for first refresh)")
+    elapsed = time.time() - st.session_state.get("last_live_refresh", 0)
+    if st.session_state.last_live_refresh > 0:
+        st.caption(f"{int(elapsed)}s since last refresh · auto-refreshes every {interval}s")
+    else:
+        st.caption(f"Auto-refreshes every {interval}s (waiting for first refresh)")
 
     # === Paper Trading ===
     st.divider()
@@ -763,12 +749,12 @@ tabs = st.tabs([
     for t in st.session_state.watchlist
 ])
 
-analyze_fn = analyze_live_stock if st.session_state.live_mode else analyze_demo_stock
+analyze_fn = analyze_live_stock
 
 for idx, ticker in enumerate(st.session_state.watchlist):
     with tabs[idx]:
         if ticker not in st.session_state.analyses:
-            with st.spinner(f"{'Live' if st.session_state.live_mode else 'Fetching'} data, training, and analyzing {ticker}..."):
+            with st.spinner(f"Live data, training, and analyzing {ticker}..."):
                 try:
                     result = analyze_fn(ticker)
                     st.session_state.analyses[ticker] = result
