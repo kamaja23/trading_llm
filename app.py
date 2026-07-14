@@ -666,7 +666,6 @@ with st.sidebar:
 
     # === Live Mode ===
     st.divider()
-    st.markdown("**Live Mode** (enabled)")
     interval = st.select_slider(
         "Refresh interval",
         options=[10, 30, 60, 120],
