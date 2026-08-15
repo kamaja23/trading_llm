@@ -43,8 +43,10 @@ from auth.auth import (
     delete_session,
     get_saved_stocks,
     init_db,
+    load_paper_trades,
     register_user,
     remove_stock,
+    save_paper_trades,
     save_stock,
     verify_session,
 )
@@ -206,7 +208,7 @@ if "last_live_refresh" not in st.session_state:
 if "paper_trader" not in st.session_state:
     st.session_state.paper_trader = None
 if "paper_trading" not in st.session_state:
-    st.session_state.paper_trading = False
+    st.session_state.paper_trading = True
 
 # Restore watchlist from query params on page reload (for live mode auto-refresh)
 if "w" in st.query_params and not st.session_state.watchlist:
@@ -480,6 +482,7 @@ def _show_logged_in_ui():
         st.session_state.auth_token = None
         st.session_state.watchlist = []
         st.session_state.analyses = {}
+        st.session_state.paper_trader = None
         st.query_params.clear()
         _clear_cookie("auth_token")
         st.rerun()
@@ -500,6 +503,7 @@ def _show_login_signup_ui():
                     token = create_session(user["id"], user["username"])
                     st.session_state.user = {"user_id": user["id"], "username": user["username"]}
                     st.session_state.auth_token = token
+                    st.session_state.paper_trader = None
                     st.query_params["token"] = token
                     _set_cookie("auth_token", token)
                     saved = get_saved_stocks(user["id"])
@@ -682,58 +686,48 @@ with st.sidebar:
 
     # === Paper Trading ===
     st.divider()
-    st.markdown("**Paper Trading**")
 
-    if not st.session_state.paper_trading:
-        col_cash, col_btn = st.columns([2, 1])
-        initial_cash = col_cash.number_input(
-            "Initial capital",
-            min_value=100.0,
-            max_value=1_000_000.0,
-            value=10_000.0,
-            step=1_000.0,
-            format="%.0f",
-            label_visibility="collapsed",
-        )
-        if col_btn.button("Start", type="primary", use_container_width=True):
-            st.session_state.paper_trader = PaperTrader(initial_cash)
-            st.session_state.paper_trading = True
-            st.rerun()
-    else:
-        trader = st.session_state.paper_trader
-        prices = {
-            t: a.price
-            for t, a in st.session_state.analyses.items()
-            if hasattr(a, "price")
-        }
+    if st.session_state.paper_trader is None:
+        user = st.session_state.get("user")
+        if user:
+            state = load_paper_trades(user["user_id"])
+            if state:
+                st.session_state.paper_trader = PaperTrader.from_dict(state)
+            else:
+                st.session_state.paper_trader = PaperTrader(10_000.0)
+        else:
+            st.session_state.paper_trader = PaperTrader(10_000.0)
 
-        port_value = trader.portfolio_value(prices)
-        st.metric(
-            "Portfolio",
-            f"${port_value:,.2f}",
-            delta=f"${port_value - trader.initial_cash:+,.2f}",
-        )
+    trader = st.session_state.paper_trader
+    prices = {
+        t: a.price
+        for t, a in st.session_state.analyses.items()
+        if hasattr(a, "price")
+    }
 
-        col1, col2 = st.columns(2)
-        col1.metric("Cash", f"${trader.cash:,.2f}")
-        col2.metric("Positions", str(trader.position_count))
+    port_value = trader.portfolio_value(prices)
+    st.metric(
+        "Portfolio",
+        f"${port_value:,.2f}",
+        delta=f"${port_value - trader.initial_cash:+,.2f}",
+    )
 
-        if trader.holdings:
-            st.markdown("**Holdings**")
-            for ticker, shares in sorted(trader.holdings.items()):
-                current_price = prices.get(ticker, 0)
-                cost = trader.cost_basis(ticker)
-                value = shares * current_price
-                delta = value - (shares * cost)
-                st.metric(
-                    f"{ticker} ({shares} sh)",
-                    f"${value:,.2f}",
-                    delta=f"${delta:+,.2f}",
-                )
+    col1, col2 = st.columns(2)
+    col1.metric("Cash", f"${trader.cash:,.2f}")
+    col2.metric("Positions", str(trader.position_count))
 
-        if st.button("Stop Trading", use_container_width=True, type="secondary"):
-            st.session_state.paper_trading = False
-            st.rerun()
+    if trader.holdings:
+        st.markdown("**Holdings**")
+        for ticker, shares in sorted(trader.holdings.items()):
+            current_price = prices.get(ticker, 0)
+            cost = trader.cost_basis(ticker)
+            value = shares * current_price
+            delta = value - (shares * cost)
+            st.metric(
+                f"{ticker} ({shares} sh)",
+                f"${value:,.2f}",
+                delta=f"${delta:+,.2f}",
+            )
 
 st.title("TradeBot — Stock Analysis Agent")
 
@@ -886,6 +880,9 @@ for idx, ticker in enumerate(st.session_state.watchlist):
                     ):
                         trade = trader.buy(result.ticker, result.price, result.date, conf)
                         if trade:
+                            user = st.session_state.get("user")
+                            if user:
+                                save_paper_trades(user["user_id"], trader.to_dict())
                             st.toast(f"Bought {trade.shares} shares of {result.ticker} for ${trade.total:,.2f}")
                             st.rerun()
                         else:
@@ -897,6 +894,9 @@ for idx, ticker in enumerate(st.session_state.watchlist):
                     ):
                         trade = trader.sell(result.ticker, result.price, result.date, conf)
                         if trade:
+                            user = st.session_state.get("user")
+                            if user:
+                                save_paper_trades(user["user_id"], trader.to_dict())
                             st.toast(f"Sold {trade.shares} shares of {result.ticker} for ${trade.total:,.2f}")
                             st.rerun()
                 elif already_holding:

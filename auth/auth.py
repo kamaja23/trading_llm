@@ -3,6 +3,7 @@ Authentication module for TradeBot.
 Handles user registration, login, JWT sessions, and saved stocks.
 """
 
+import json
 import sqlite3
 import hashlib
 import datetime
@@ -50,6 +51,15 @@ def init_db():
             token TEXT UNIQUE NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             expires_at TIMESTAMP NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS paper_trades (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL UNIQUE,
+            state TEXT NOT NULL,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users(id)
         )
     """)
@@ -170,3 +180,29 @@ def get_saved_stocks(user_id: int) -> list[dict]:
     ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+def save_paper_trades(user_id: int, state: dict):
+    conn = get_db()
+    conn.execute(
+        """INSERT INTO paper_trades (user_id, state, updated_at)
+           VALUES (?, ?, CURRENT_TIMESTAMP)
+           ON CONFLICT(user_id) DO UPDATE SET
+               state = excluded.state,
+               updated_at = CURRENT_TIMESTAMP""",
+        (user_id, json.dumps(state)),
+    )
+    conn.commit()
+    conn.close()
+
+
+def load_paper_trades(user_id: int) -> dict | None:
+    conn = get_db()
+    row = conn.execute(
+        "SELECT state FROM paper_trades WHERE user_id = ?",
+        (user_id,),
+    ).fetchone()
+    conn.close()
+    if row is None:
+        return None
+    return json.loads(row["state"])
