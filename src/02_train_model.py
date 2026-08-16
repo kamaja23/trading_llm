@@ -24,6 +24,22 @@ from utils.token_definitions import ALL_CUSTOM_TOKENS
 from utils.data_generator import load_sequences
 
 
+def parse_args():
+    import argparse
+    parser = argparse.ArgumentParser(description="Train the TradeBot model")
+    parser.add_argument("--epochs", type=int, default=50,
+                        help="Number of training epochs (default: 50)")
+    parser.add_argument("--block-size", type=int, default=64,
+                        help="Max sequence length for training (default: 64)")
+    parser.add_argument("--warm-start", action="store_true",
+                        help="Start from the existing final_model instead of distilgpt2")
+    parser.add_argument("--no-freeze", action="store_true",
+                        help="Do not freeze the base transformer layers")
+    parser.add_argument("--no-resume", action="store_true",
+                        help="Start fresh even if checkpoints exist")
+    return parser.parse_args()
+
+
 def prepare_tokenizer():
     print("Loading GPT-2 tokenizer...")
     tokenizer = GPT2Tokenizer.from_pretrained('distilgpt2')
@@ -38,9 +54,18 @@ def prepare_tokenizer():
     return tokenizer
 
 
-def prepare_model(tokenizer, freeze_base=True):
+def prepare_model(tokenizer, freeze_base=True, warm_start=False):
     print("Loading distilgpt2 model...")
-    model = GPT2LMHeadModel.from_pretrained('distilgpt2')
+    if warm_start:
+        warm_path = project_root / 'models' / 'tradebot' / 'final_model'
+        if warm_path.exists():
+            print(f"Warm-starting from existing model: {warm_path}")
+            model = GPT2LMHeadModel.from_pretrained(str(warm_path))
+        else:
+            print("No existing final_model found; falling back to distilgpt2")
+            model = GPT2LMHeadModel.from_pretrained('distilgpt2')
+    else:
+        model = GPT2LMHeadModel.from_pretrained('distilgpt2')
 
     model.resize_token_embeddings(len(tokenizer))
 
@@ -100,13 +125,21 @@ def create_dataset_from_file(file_path, tokenizer, block_size=128):
             all_input_ids.append(input_ids)
             all_labels.append(labels)
 
+        masks = []
+        for text in texts:
+            tokens = text.split()
+            encoded_ids = tokenizer(
+                ' '.join(tokens),
+                truncation=True,
+                max_length=block_size,
+                add_special_tokens=False,
+            )['input_ids']
+            masks.append([1] * len(encoded_ids) + [0] * max(0, block_size - len(encoded_ids)))
+
         return {
             'input_ids': all_input_ids,
             'labels': all_labels,
-            'attention_mask': [
-                [1] * min(len(t.split()), block_size) + [0] * max(0, block_size - len(t.split()))
-                for t in texts
-            ],
+            'attention_mask': masks,
         }
 
     dataset = Dataset.from_dict({'text': lines})
@@ -199,6 +232,11 @@ def main():
     NUM_EPOCHS = 200
     LEARNING_RATE = 1e-3
 
+    args = parse_args()
+    BLOCK_SIZE = args.block_size
+    NUM_EPOCHS = args.epochs
+    freeze_base = not args.no_freeze
+
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"\nUsing device: {device}")
     if device == "cuda":
@@ -208,7 +246,7 @@ def main():
     tokenizer = prepare_tokenizer()
 
     print("\n2. Preparing model...")
-    model = prepare_model(tokenizer, freeze_base=True)
+    model = prepare_model(tokenizer, freeze_base=freeze_base, warm_start=args.warm_start)
     model.to(device)
 
     if device == "cuda":
@@ -241,8 +279,8 @@ def main():
         metric_for_best_model="eval_loss",
         report_to="none",
         remove_unused_columns=False,
-        dataloader_num_workers=4,
-        dataloader_pin_memory=True,
+        dataloader_num_workers=0,
+        dataloader_pin_memory=False,
     )
 
     print("\n5. Creating trainer...")
@@ -257,7 +295,7 @@ def main():
     print("\n6. Checking for existing checkpoints...")
     checkpoints = sorted(MODEL_OUTPUT_DIR.glob("checkpoint-*"))
     resume_from = None
-    if checkpoints:
+    if checkpoints and not args.no_resume:
         resume_from = str(checkpoints[-1])
         print(f"   Resuming from checkpoint: {resume_from}")
     else:
@@ -268,13 +306,15 @@ def main():
     print(f"   Batch size: {BATCH_SIZE}")
     print(f"   Learning rate: {LEARNING_RATE}")
     print(f"\n   {NUM_EPOCHS} epochs × {len(train_dataset) // BATCH_SIZE} steps/epoch = {NUM_EPOCHS * len(train_dataset) // BATCH_SIZE:,} total steps")
-    print(f"   At ~7.9 it/s (AMD RX 7800 XT), expect ~{NUM_EPOCHS * (len(train_dataset) // BATCH_SIZE) / 7.9 / 3600:.1f}h total\n")
-
+    print(f"   At ~7.9 it/s (AMD RX 7800 XT), expect ~{NUM_EPOCHS * (len(train_dataset) // BATCH_SIZE) / 7.9 / 3600:.2f}h total\n")
     trainer.train(resume_from_checkpoint=resume_from)
 
     print("\n7. Saving final model...")
     final_model_path = MODEL_OUTPUT_DIR / 'final_model'
-    trainer.save_model(str(final_model_path))
+    # Save the UNWRAPPED model so from_pretrained loads the real trained
+    # weights instead of the torch.compile '_orig_mod.*' keys.
+    model_to_save = getattr(trainer.model, "_orig_mod", trainer.model)
+    model_to_save.save_pretrained(str(final_model_path))
     tokenizer.save_pretrained(str(final_model_path))
 
     print("\n" + "=" * 60)

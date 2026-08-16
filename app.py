@@ -273,6 +273,10 @@ def stock_tab_hover_css() -> str:
 
 
 def indicator_bias(key: str, value: str) -> str:
+    if key == "social_sentiment" and value.startswith("SOC_"):
+        bias = get_agent()._figure_social_bias(value)
+        if bias:
+            return bias
     if key in BULLISH_INDICATORS and value in BULLISH_INDICATORS[key]:
         return "bullish"
     if key in BEARISH_INDICATORS and value in BEARISH_INDICATORS[key]:
@@ -300,7 +304,7 @@ def prediction_explanation(result) -> tuple[str, list[str]]:
         "SELL": "bearish",
     }.get(prediction)
 
-    indicator_keys = ["trend", "volume", "heikin_ashi", "stochastic", "rsi", "macd", "bb", "ma_cross", "volatility", "candle", "obv", "price_action", "market_context", "sentiment"]
+    indicator_keys = ["trend", "volume", "heikin_ashi", "stochastic", "rsi", "macd", "bb", "ma_cross", "volatility", "candle", "obv", "price_action", "market_context", "sentiment", "social_sentiment"]
     for key in indicator_keys:
         value = result.indicators.get(key, "")
         if not value:
@@ -729,6 +733,156 @@ with st.sidebar:
                 delta=f"${delta:+,.2f}",
             )
 
+    # === Figure Tracking ===
+    st.divider()
+    st.markdown("**Figure Tracking**")
+    st.caption("Social sentiment from tracked public figures")
+
+    try:
+        from utils.social_tracker import (
+            add_user_figure,
+            all_figures,
+            compute_statement_reaction,
+            fetch_figure_posts,
+            load_user_figures,
+            remove_user_figure,
+            suggest_figures,
+        )
+
+        figures = all_figures()
+        st.caption(f"{len(figures)} tracked · {len(load_user_figures())} added by you")
+
+        if figures:
+            show_figures = st.checkbox(
+                "Show figure posts",
+                value=st.session_state.get("show_figures", False),
+                key="show_figures",
+            )
+            if show_figures:
+                for figure in figures:
+                    prefix = figure.get("prefix", "FIG")
+                    with st.expander(f"**{figure.get('name')}** — @{figure.get('x') or figure.get('truth')}"):
+                        try:
+                            posts = fetch_figure_posts(figure)
+                        except Exception:
+                            posts = []
+                        if not posts:
+                            st.caption("No recent posts available.")
+                        for post in posts[:5]:
+                            st.caption(f"{post.get('text', '')[:120]}")
+                            st.caption(f"`{post.get('created_at', '')[:10]}` · {post.get('source', '')}")
+
+        # --- Suggestions ---
+        st.markdown("**Suggested figures**")
+        suggestions = suggest_figures(st.session_state.watchlist)
+        if suggestions:
+            st.caption("Based on your watchlist — click to track continuously")
+            for suggestion in suggestions[:6]:
+                cols = st.columns([3, 1])
+                cols[0].markdown(
+                    f"**{suggestion['name']}**  \n"
+                    f"`{', '.join(suggestion.get('tickers', []))}` · "
+                    f"_{suggestion.get('reason', '')}_"
+                )
+                if cols[1].button(
+                    "Track",
+                    key=f"suggest_{suggestion.get('prefix')}",
+                ):
+                    result = add_user_figure(suggestion)
+                    if result.get("ok"):
+                        get_agent.clear()
+                        st.session_state.show_figures = True
+                        st.rerun()
+                    else:
+                        st.warning(result.get("error"))
+        else:
+            st.caption("All suggested figures are already tracked.")
+
+        # --- Add a figure manually ---
+        with st.expander("➕ Add a figure to track"):
+            with st.form("add_figure_form", clear_on_submit=True):
+                name = st.text_input("Name", placeholder="e.g. Bill Ackman")
+                prefix = st.text_input(
+                    "Prefix (short code, e.g. ACKMAN)",
+                    placeholder="ACKMAN",
+                ).strip().upper()
+                x_handle = st.text_input(
+                    "X (Twitter) handle",
+                    placeholder="BillAckman",
+                ).strip().lstrip("@")
+                truth_handle = st.text_input(
+                    "Truth Social handle (optional)",
+                    placeholder="billackman",
+                ).strip().lstrip("@")
+                tickers = st.text_input(
+                    "Tickers they influence (comma-separated)",
+                    placeholder="SPY, AAPL",
+                ).strip().upper()
+                submitted = st.form_submit_button("Save figure")
+                if submitted:
+                    ticker_list = [t.strip() for t in tickers.split(",") if t.strip()]
+                    result = add_user_figure({
+                        "name": name,
+                        "prefix": prefix,
+                        "x": x_handle or None,
+                        "truth": truth_handle or None,
+                        "tickers": ticker_list,
+                    })
+                    if result.get("ok"):
+                        get_agent.clear()
+                        st.success(f"Tracking {name}. Tokens were added at runtime.")
+                        st.rerun()
+                    else:
+                        st.error(result.get("error"))
+
+        # --- Remove user-added figures ---
+        user_figures = load_user_figures()
+        if user_figures:
+            st.markdown("**Your tracked figures**")
+            for figure in user_figures:
+                cols = st.columns([3, 1])
+                cols[0].markdown(
+                    f"**{figure.get('name')}** — "
+                    f"@{figure.get('x') or figure.get('truth')}  \n"
+                    f"`{', '.join(figure.get('tickers', []))}`"
+                )
+                if cols[1].button(
+                    "Remove",
+                    key=f"remove_{figure.get('prefix')}",
+                ):
+                    remove_user_figure(figure.get("name", ""))
+                    get_agent.clear()
+                    st.rerun()
+
+        if st.session_state.analyses:
+            st.markdown("**Statement → Market Reaction**")
+            st.caption("Correlation between figure posts and next-day returns")
+            for figure in figures:
+                figure_name = figure.get("name")
+                for ticker in figure.get("tickers", []):
+                    if ticker not in st.session_state.analyses:
+                        continue
+                    result = st.session_state.analyses[ticker]
+                    closes = {}
+                    if result.price_history:
+                        closes = dict(zip(result.price_history["dates"], result.price_history["Close"]))
+                    try:
+                        reaction = compute_statement_reaction(figure_name, ticker, closes)
+                    except Exception:
+                        reaction = {"is_sufficient": False}
+                    label = f"{figure_name} → {ticker}"
+                    if reaction.get("is_sufficient"):
+                        corr = reaction.get("correlation", 0.0)
+                        st.metric(
+                            label,
+                            f"{corr:+.2f}",
+                            delta=f"{reaction.get('posts', 0)} posts",
+                        )
+                    else:
+                        st.caption(f"{label}: need ≥5 posts · have {reaction.get('posts', 0)}")
+    except Exception:
+        pass
+
 st.title("TradeBot — Stock Analysis Agent")
 
 if not st.session_state.watchlist:
@@ -762,6 +916,16 @@ for idx, ticker in enumerate(st.session_state.watchlist):
                     continue
 
         result = st.session_state.analyses[ticker]
+
+        social_token = result.indicators.get("social_sentiment", "")
+        if social_token and not social_token.endswith("_NoData"):
+            last_social = st.session_state.get("_last_social_token", {}).get(ticker)
+            if last_social != social_token:
+                st.session_state.setdefault("_last_social_token", {})[ticker] = social_token
+                st.toast(
+                    f"{ticker}: tracked-figure sentiment {social_token}",
+                    icon="📣",
+                )
 
         chart_col, info_col = st.columns([2, 1])
 
@@ -873,9 +1037,11 @@ for idx, ticker in enumerate(st.session_state.watchlist):
                 trader = st.session_state.paper_trader
                 already_holding = result.ticker in trader.holdings
                 col_exec, col_status = st.columns([1, 1])
-                if pred == "BUY" and not already_holding:
-                    if col_exec.button(
-                        "Execute BUY", type="primary", key=f"buy_{result.ticker}",
+
+                with col_exec:
+                    col_buy, col_sell = st.columns(2)
+                    if col_buy.button(
+                        "Buy", type="primary", key=f"buy_{result.ticker}",
                         use_container_width=True,
                     ):
                         trade = trader.buy(result.ticker, result.price, result.date, conf)
@@ -887,10 +1053,9 @@ for idx, ticker in enumerate(st.session_state.watchlist):
                             st.rerun()
                         else:
                             st.toast("Insufficient cash to buy", icon="⚠️")
-                elif pred == "SELL" and already_holding:
-                    if col_exec.button(
-                        "Execute SELL", type="secondary", key=f"sell_{result.ticker}",
-                        use_container_width=True,
+                    if col_sell.button(
+                        "Sell", type="secondary", key=f"sell_{result.ticker}",
+                        use_container_width=True, disabled=not already_holding,
                     ):
                         trade = trader.sell(result.ticker, result.price, result.date, conf)
                         if trade:
@@ -899,10 +1064,6 @@ for idx, ticker in enumerate(st.session_state.watchlist):
                                 save_paper_trades(user["user_id"], trader.to_dict())
                             st.toast(f"Sold {trade.shares} shares of {result.ticker} for ${trade.total:,.2f}")
                             st.rerun()
-                elif already_holding:
-                    col_exec.markdown("**HOLD** — already in portfolio")
-                else:
-                    col_exec.markdown("**HOLD** — no action recommended")
 
                 if already_holding:
                     cost = trader.cost_basis(result.ticker)
@@ -962,7 +1123,7 @@ for idx, ticker in enumerate(st.session_state.watchlist):
 
             st.divider()
             st.markdown("**Market State — Indicators**")
-            for key in ["trend", "volume", "heikin_ashi", "stochastic", "rsi", "macd", "bb", "ma_cross", "volatility", "candle", "obv", "atr", "price_action", "market_context", "relative"]:
+            for key in ["trend", "volume", "heikin_ashi", "stochastic", "rsi", "macd", "bb", "ma_cross", "volatility", "candle", "obv", "atr", "price_action", "market_context", "relative", "social_sentiment"]:
                 val = result.indicators.get(key, "")
                 if not val:
                     continue

@@ -46,6 +46,26 @@ class TestGenerateTokenSequences:
             # 17 context tokens + 1 action = 18 tokens (without sentiment)
             assert len(tokens) == 18, f"Expected 18 tokens, got {len(tokens)}: {seq}"
 
+    def test_sequence_format_with_sentiment(self, sample_ohlcv):
+        sequences = generate_token_sequences(sample_ohlcv, "SPY", "DAILY", include_sentiment=True)
+        for seq in sequences:
+            tokens = seq.split()
+            # 17 context + 3 sentiment + 1 figure social + 1 action = 22 tokens
+            assert len(tokens) == 22, f"Expected 22 tokens, got {len(tokens)}: {seq}"
+
+    def test_figure_social_token_present_with_sentiment(self, sample_ohlcv):
+        sequences = generate_token_sequences(sample_ohlcv, "SPY", "DAILY", include_sentiment=True)
+        for seq in sequences:
+            tokens = seq.split()
+            # figure social token is second-to-last
+            assert tokens[-2].startswith("SOC_"), f"Expected figure token, got {tokens[-2]}"
+            assert tokens[-2] in {
+                "SOC_MUSK_StrongPos", "SOC_MUSK_Positive", "SOC_MUSK_Neutral",
+                "SOC_MUSK_Negative", "SOC_MUSK_StrongNeg", "SOC_MUSK_NoData",
+                "SOC_TRUMP_StrongPos", "SOC_TRUMP_Positive", "SOC_TRUMP_Neutral",
+                "SOC_TRUMP_Negative", "SOC_TRUMP_StrongNeg", "SOC_TRUMP_NoData",
+            }
+
     def test_first_token_is_symbol(self, sample_ohlcv):
         sequences = generate_token_sequences(sample_ohlcv, "SPY", "DAILY")
         for seq in sequences:

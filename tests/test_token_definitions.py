@@ -22,6 +22,7 @@ from utils.token_definitions import (
     NEWS_TOKENS,
     SOCIAL_TOKENS,
     RELATIVE_TOKENS,
+    FIGURE_SOCIAL_TOKENS,
     INDICATOR_TOKENS,
     ACTION_TOKENS,
     ALL_CUSTOM_TOKENS,
@@ -31,6 +32,8 @@ from utils.token_definitions import (
     get_timeframe_token,
     validate_sequence,
     get_token_category,
+    figure_social_tokens,
+    dynamic_figure_social_tokens,
 )
 
 
@@ -91,6 +94,46 @@ class TestTokenCounts:
 
     def test_social_tokens_count(self):
         assert len(SOCIAL_TOKENS) == 4
+
+    def test_figure_social_tokens_count(self):
+        assert len(FIGURE_SOCIAL_TOKENS) == 12
+        assert "SOC_MUSK_StrongPos" in FIGURE_SOCIAL_TOKENS
+        assert "SOC_MUSK_NoData" in FIGURE_SOCIAL_TOKENS
+        assert "SOC_TRUMP_Negative" in FIGURE_SOCIAL_TOKENS
+        assert "SOC_TRUMP_NoData" in FIGURE_SOCIAL_TOKENS
+
+    def test_figure_social_tokens_in_all_custom(self):
+        for token in FIGURE_SOCIAL_TOKENS:
+            assert token in ALL_CUSTOM_TOKENS
+
+    def test_figure_social_token_category(self):
+        assert get_token_category("SOC_MUSK_Positive") == "social"
+        assert get_token_category("SOC_TRUMP_NoData") == "social"
+
+    def test_dynamic_figure_tokens_include_defaults(self):
+        dynamic = dynamic_figure_social_tokens()
+        assert "SOC_MUSK_NoData" in dynamic
+        assert "SOC_TRUMP_StrongPos" in dynamic
+
+    def test_figure_social_tokens_for_prefix(self):
+        tokens = figure_social_tokens("HUANG")
+        assert tokens == [
+            "SOC_HUANG_StrongPos",
+            "SOC_HUANG_Positive",
+            "SOC_HUANG_Neutral",
+            "SOC_HUANG_Negative",
+            "SOC_HUANG_StrongNeg",
+            "SOC_HUANG_NoData",
+        ]
+
+    def test_figure_social_tokens_lowercase_prefix(self):
+        tokens = figure_social_tokens("huang")
+        assert "SOC_HUANG_NoData" in tokens
+
+    def test_dynamic_figure_token_category(self):
+        assert get_token_category("SOC_HUANG_StrongPos") == "social"
+        assert get_token_category("SOC_ACKMAN_Negative") == "social"
+        assert get_token_category("SOC_HUANG_NoData") == "social"
 
     def test_relative_tokens_count(self):
         assert len(RELATIVE_TOKENS) == 4

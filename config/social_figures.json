@@ -1,0 +1,30 @@
+[
+  {
+    "name": "Elon Musk",
+    "prefix": "MUSK",
+    "x": "elonmusk",
+    "truth": "elonmusk",
+    "tickers": ["TSLA", "DOGE", "BTC"],
+    "keywords": {
+      "TSLA": ["tesla", "tsla", "cybertruck", "model s", "model x", "model 3", "model y", "roadster", "full self driving", "fsd", "robotaxi", "gigafactory", "autopilot"],
+      "DOGE": ["dogecoin", "doge"],
+      "BTC": ["bitcoin", "btc", "crypto"]
+    },
+    "notable_posts": []
+  },
+  {
+    "name": "Donald Trump",
+    "prefix": "TRUMP",
+    "x": "realDonaldTrump",
+    "truth": "realDonaldTrump",
+    "tickers": ["DJT", "SPY", "META", "T", "MSFT"],
+    "keywords": {
+      "DJT": ["djt", "truth social", "trump media"],
+      "SPY": ["stock market", "stocks", "wall street", "tariff", "tariffs", "fed", "economy", "recession", "jobs"],
+      "META": ["meta", "facebook", "instagram"],
+      "T": ["at&t", "att", "merger"],
+      "MSFT": ["microsoft", "msft"]
+    },
+    "notable_posts": []
+  }
+]

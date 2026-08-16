@@ -19,7 +19,8 @@ sys.path.insert(0, str(project_root))
 from transformers import GPT2Tokenizer, GPT2LMHeadModel
 from utils.indicators import add_all_indicators
 from utils.market_data import MarketDataError, fetch_market_data, fetch_realtime_quote
-from utils.token_definitions import ACTION_TOKENS
+from utils.social_tracker import compute_social_indicator
+from utils.token_definitions import ACTION_TOKENS, ALL_CUSTOM_TOKENS, dynamic_figure_social_tokens
 
 
 BULLISH_INDICATORS = {
@@ -36,6 +37,10 @@ BULLISH_INDICATORS = {
     "price_action": ("PA_BreakoutUp", "PA_SupportTest", "PA_GapUp"),
     "market_context": ("MKT_Bullish", "MKT_Oversold"),
     "sentiment": ("SENT_StrongPos", "SENT_Positive"),
+    "social_sentiment": (
+        "SOC_MUSK_StrongPos", "SOC_MUSK_Positive",
+        "SOC_TRUMP_StrongPos", "SOC_TRUMP_Positive",
+    ),
 }
 
 BEARISH_INDICATORS = {
@@ -52,6 +57,10 @@ BEARISH_INDICATORS = {
     "price_action": ("PA_BreakoutDown", "PA_ResistanceTest", "PA_GapDown"),
     "market_context": ("MKT_Bearish", "MKT_Overbought"),
     "sentiment": ("SENT_StrongNeg", "SENT_Negative"),
+    "social_sentiment": (
+        "SOC_MUSK_StrongNeg", "SOC_MUSK_Negative",
+        "SOC_TRUMP_StrongNeg", "SOC_TRUMP_Negative",
+    ),
 }
 
 INDICATOR_LABELS = {
@@ -72,6 +81,7 @@ INDICATOR_LABELS = {
     "relative": "Relative Strength",
     "sentiment": "News Sentiment",
     "social": "Social Media",
+    "social_sentiment": "Social Sentiment (Tracked Figures)",
 }
 
 INDICATOR_VALUES = {
@@ -193,6 +203,20 @@ INDICATOR_VALUES = {
     "SOC_Moderate": "Moderate social media activity",
     "SOC_Low": "Low social media activity",
     "SOC_Silent": "Very low social media activity",
+    # Figure-specific social sentiment (Elon Musk)
+    "SOC_MUSK_StrongPos": "Elon Musk posts strongly positive about this ticker",
+    "SOC_MUSK_Positive": "Elon Musk posts positive about this ticker",
+    "SOC_MUSK_Neutral": "Elon Musk posts neutral about this ticker",
+    "SOC_MUSK_Negative": "Elon Musk posts negative about this ticker",
+    "SOC_MUSK_StrongNeg": "Elon Musk posts strongly negative about this ticker",
+    "SOC_MUSK_NoData": "No recent Elon Musk posts mention this ticker",
+    # Figure-specific social sentiment (Donald Trump)
+    "SOC_TRUMP_StrongPos": "Donald Trump posts strongly positive about this ticker",
+    "SOC_TRUMP_Positive": "Donald Trump posts positive about this ticker",
+    "SOC_TRUMP_Neutral": "Donald Trump posts neutral about this ticker",
+    "SOC_TRUMP_Negative": "Donald Trump posts negative about this ticker",
+    "SOC_TRUMP_StrongNeg": "Donald Trump posts strongly negative about this ticker",
+    "SOC_TRUMP_NoData": "No recent Donald Trump posts mention this ticker",
     # Relative
     "REL_Strong": "Strong relative performance vs sector",
     "REL_Inline": "In line with sector performance",
@@ -239,10 +263,32 @@ class StockAnalysisAgent:
             )
         self.tokenizer = GPT2Tokenizer.from_pretrained(str(path))
         self.model = GPT2LMHeadModel.from_pretrained(str(path))
+        self._ensure_custom_tokens()
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.model.to(self.device)
         self.model.eval()
         self._action_token_ids = self._get_action_token_ids()
+
+    def _ensure_custom_tokens(self) -> None:
+        """Add any custom tokens missing from the saved tokenizer.
+
+        The saved tokenizer is created during training and may predate newer
+        vocabulary additions (e.g. figure-specific social tokens).  Missing
+        tokens are added and the embedding/lm_head resized so inference keeps
+        working even before a retrain produces an updated model.
+        """
+        needed = list(ALL_CUSTOM_TOKENS) + dynamic_figure_social_tokens()
+        vocab = self.tokenizer.get_vocab()
+        missing = [t for t in needed if t not in vocab]
+        if not missing:
+            return
+        print(f"Adding {len(missing)} missing custom tokens to tokenizer...")
+        self.tokenizer.add_tokens(missing)
+        old_size = self.model.lm_head.weight.shape[0]
+        self.model.resize_token_embeddings(len(self.tokenizer))
+        print(
+            f"Resized model embeddings from {old_size} to {len(self.tokenizer)} tokens"
+        )
 
     def _get_action_token_ids(self) -> Dict[str, int]:
         ids = {}
@@ -315,11 +361,42 @@ class StockAnalysisAgent:
         df = add_all_indicators(df)
         return df.dropna()
 
+    def _social_sentiment_token(self, ticker: str) -> str:
+        try:
+            result = compute_social_indicator(ticker)
+            return result.get("token", "SOC_MUSK_NoData")
+        except Exception:
+            return "SOC_MUSK_NoData"
+
+    @staticmethod
+    def _figure_social_bias(token: str) -> Optional[str]:
+        """Return 'bullish'/'bearish'/'neutral' for any figure social token.
+
+        Works for user-added figures too by matching the token suffix rather
+        than a hard-coded prefix list.
+        """
+        if not token or not token.startswith("SOC_"):
+            return None
+        suffix = token.rsplit("_", 1)[-1]
+        if suffix in ("StrongPos", "Positive"):
+            return "bullish"
+        if suffix in ("StrongNeg", "Negative"):
+            return "bearish"
+        return "neutral"
+
     def _score_indicators(self, indicators: Dict[str, str]) -> float:
         bullish = 0
         bearish = 0
         total = 0
         for key, val in indicators.items():
+            if key == "social_sentiment":
+                bias = self._figure_social_bias(val)
+                if bias == "bullish":
+                    bullish += 1
+                elif bias == "bearish":
+                    bearish += 1
+                total += 1
+                continue
             if key in BULLISH_INDICATORS and val in BULLISH_INDICATORS[key]:
                 bullish += 1
             if key in BEARISH_INDICATORS and val in BEARISH_INDICATORS[key]:
@@ -380,6 +457,10 @@ class StockAnalysisAgent:
             "volatility_token", "candle_token", "obv_token",
             "price_action_token", "market_context_token",
         ]
+        include_social = False
+        if "social_sentiment_token" in df_indicators.columns and "social_sentiment_token" in latest.index:
+            feature_cols.append("social_sentiment_token")
+            include_social = True
         try:
             from sklearn.dummy import DummyClassifier
             from sklearn.ensemble import RandomForestClassifier
@@ -461,6 +542,8 @@ class StockAnalysisAgent:
             "relative": latest["relative_token"],
         }
 
+        indicators["social_sentiment"] = self._social_sentiment_token(ticker)
+
         input_sequence = (
             f"{symbol_token} <TF_DAILY> "
             f"{indicators['trend']} {indicators['volume']} "
@@ -470,7 +553,7 @@ class StockAnalysisAgent:
             f"{indicators['volatility']} {indicators['candle']} "
             f"{indicators['obv']} {indicators['atr']} "
             f"{indicators['price_action']} {indicators['market_context']} "
-            f"{indicators['relative']}"
+            f"{indicators['relative']} {indicators['social_sentiment']}"
         )
 
         prediction = self._predict(input_sequence)
@@ -591,6 +674,8 @@ class StockAnalysisAgent:
             "relative": latest["relative_token"],
         }
 
+        indicators["social_sentiment"] = self._social_sentiment_token(ticker)
+
         input_sequence = (
             f"{symbol_token} <TF_DAILY> "
             f"{indicators['trend']} {indicators['volume']} "
@@ -600,7 +685,7 @@ class StockAnalysisAgent:
             f"{indicators['volatility']} {indicators['candle']} "
             f"{indicators['obv']} {indicators['atr']} "
             f"{indicators['price_action']} {indicators['market_context']} "
-            f"{indicators['relative']}"
+            f"{indicators['relative']} {indicators['social_sentiment']}"
         )
 
         prediction = self._predict(input_sequence)

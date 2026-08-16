@@ -12,6 +12,7 @@ import os
 from pathlib import Path
 
 from utils.market_data import MarketDataError, fetch_market_data
+from utils.social_tracker import social_token_for_date
 from utils.token_definitions import get_symbol_token, get_timeframe_token
 from utils.indicators import add_all_indicators
 from utils.news_sentiment import fetch_aggregated_sentiment
@@ -160,7 +161,15 @@ def generate_token_sequences(
             sequence_parts.append(sentiment_data['sentiment_token'])
             sequence_parts.append(sentiment_data['news_token'])
             sequence_parts.append(sentiment_data['social_token'])
-        
+
+        if include_sentiment:
+            row_date = getattr(idx, "date", lambda: None)()
+            try:
+                figure_token = social_token_for_date(symbol, row_date)
+            except Exception:
+                figure_token = "SOC_MUSK_NoData"
+            sequence_parts.append(figure_token)
+
         sequence = " ".join(sequence_parts) + " " + row['action_token']
         sequences.append(sequence)
     

@@ -68,7 +68,7 @@ def main():
                 df=df,
                 symbol=symbol,
                 timeframe=timeframe,
-                include_sentiment=False,
+                include_sentiment=True,
             )
             
             print(f"      Generated {len(sequences)} sequences")

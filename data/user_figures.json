@@ -1,0 +1,219 @@
+[
+  {
+    "name": "Jensen Huang",
+    "prefix": "HUANG",
+    "x": "nvidia",
+    "truth": null,
+    "tickers": [
+      "NVDA",
+      "AMD",
+      "INTC"
+    ],
+    "keywords": {
+      "NVDA": [
+        "nvidia",
+        "nvda",
+        "chips",
+        "semiconductor",
+        "ai"
+      ],
+      "AMD": [
+        "amd",
+        "advanced micro"
+      ],
+      "INTC": [
+        "intel",
+        "intc"
+      ]
+    },
+    "added_by_user": true
+  },
+  {
+    "name": "Jim Cramer",
+    "prefix": "CRAMER",
+    "x": "jimcramer",
+    "truth": null,
+    "tickers": [
+      "SPY",
+      "AAPL",
+      "NVDA",
+      "TSLA"
+    ],
+    "keywords": {
+      "SPY": [
+        "spy",
+        "s&p 500",
+        "s&p",
+        "stock market",
+        "stocks",
+        "fed",
+        "economy",
+        "rates"
+      ],
+      "AAPL": [
+        "apple",
+        "aapl",
+        "iphone"
+      ],
+      "NVDA": [
+        "nvidia",
+        "nvda",
+        "chips",
+        "semiconductor",
+        "ai"
+      ],
+      "TSLA": [
+        "tesla",
+        "tsla"
+      ]
+    },
+    "added_by_user": true
+  },
+  {
+    "name": "Warren Buffett",
+    "prefix": "BUFFETT",
+    "x": "WarrenBuffett",
+    "truth": null,
+    "tickers": [
+      "BRK_B",
+      "SPY",
+      "AAPL",
+      "BAC"
+    ],
+    "keywords": {
+      "BRK_B": [
+        "berkshire",
+        "brk"
+      ],
+      "SPY": [
+        "spy",
+        "s&p 500",
+        "s&p",
+        "stock market",
+        "stocks",
+        "fed",
+        "economy",
+        "rates"
+      ],
+      "AAPL": [
+        "apple",
+        "aapl",
+        "iphone"
+      ],
+      "BAC": [
+        "bank of america",
+        "bac"
+      ]
+    },
+    "added_by_user": true
+  },
+  {
+    "name": "Tim Cook",
+    "prefix": "COOK",
+    "x": "tim_cook",
+    "truth": null,
+    "tickers": [
+      "AAPL",
+      "SPY"
+    ],
+    "keywords": {
+      "AAPL": [
+        "apple",
+        "aapl",
+        "iphone"
+      ],
+      "SPY": [
+        "spy",
+        "s&p 500",
+        "s&p",
+        "stock market",
+        "stocks",
+        "fed",
+        "economy",
+        "rates"
+      ]
+    },
+    "added_by_user": true
+  },
+  {
+    "name": "Mark Cuban",
+    "prefix": "CUBAN",
+    "x": "mcuban",
+    "truth": null,
+    "tickers": [
+      "SPY",
+      "AMZN",
+      "GME"
+    ],
+    "keywords": {
+      "SPY": [
+        "spy",
+        "s&p 500",
+        "s&p",
+        "stock market",
+        "stocks",
+        "fed",
+        "economy",
+        "rates"
+      ],
+      "AMZN": [
+        "amazon",
+        "amzn"
+      ],
+      "GME": [
+        "gamestop",
+        "gme"
+      ]
+    },
+    "added_by_user": true
+  },
+  {
+    "name": "Peter Schiff",
+    "prefix": "SCHIFF",
+    "x": "PeterSchiff",
+    "truth": null,
+    "tickers": [
+      "BTC",
+      "GLD",
+      "SLV"
+    ],
+    "keywords": {
+      "BTC": [
+        "bitcoin",
+        "btc",
+        "crypto",
+        "cryptocurrency"
+      ],
+      "GLD": [
+        "gold",
+        "gld"
+      ],
+      "SLV": [
+        "silver",
+        "slv"
+      ]
+    },
+    "added_by_user": true
+  },
+  {
+    "name": "Satya Nadella",
+    "prefix": "NADELLA",
+    "x": "satyanadella",
+    "truth": null,
+    "tickers": [
+      "MSFT",
+      "AI"
+    ],
+    "keywords": {
+      "MSFT": [
+        "microsoft",
+        "msft"
+      ],
+      "AI": [
+        "artificial intelligence",
+        "ai"
+      ]
+    },
+    "added_by_user": true
+  }
+]

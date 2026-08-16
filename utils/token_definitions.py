@@ -5,6 +5,8 @@ This module defines all the discrete tokens that can appear in trading sequences
 Each token represents a specific market fact or state.
 """
 
+from typing import List
+
 # Symbol tokens - represent the asset being traded
 SYMBOL_TOKENS = [
     "<SYM_SPY>",   # S&P 500 ETF
@@ -242,6 +244,65 @@ SOCIAL_TOKENS = [
     "SOC_Silent",       # Very low / no activity
 ]
 
+# Figure-specific social sentiment tokens (per tracked influential figure)
+FIGURE_SOCIAL_TOKENS = [
+    # Elon Musk
+    "SOC_MUSK_StrongPos",
+    "SOC_MUSK_Positive",
+    "SOC_MUSK_Neutral",
+    "SOC_MUSK_Negative",
+    "SOC_MUSK_StrongNeg",
+    "SOC_MUSK_NoData",
+    # Donald Trump
+    "SOC_TRUMP_StrongPos",
+    "SOC_TRUMP_Positive",
+    "SOC_TRUMP_Neutral",
+    "SOC_TRUMP_Negative",
+    "SOC_TRUMP_StrongNeg",
+    "SOC_TRUMP_NoData",
+]
+
+# Sentiment suffixes shared by every figure's token set
+_SOC_SUFFIXES = ["StrongPos", "Positive", "Neutral", "Negative", "StrongNeg", "NoData"]
+
+
+def figure_social_tokens(prefix: str) -> List[str]:
+    """Return the six sentiment tokens for a figure prefix (e.g. 'MUSK')."""
+    prefix = (prefix or "").upper()
+    return [f"SOC_{prefix}_{suffix}" for suffix in _SOC_SUFFIXES]
+
+
+def dynamic_figure_social_tokens() -> List[str]:
+    """
+    Figure social tokens for every currently tracked figure (defaults +
+    user-added).  Kept separate from the static FIGURE_SOCIAL_TOKENS so
+    model/training code can rely on a stable core vocabulary while the app
+    can extend the tokenizer at runtime.
+    """
+    try:
+        from utils.social_tracker import all_figures
+        prefixes = [fig.get("prefix") for fig in all_figures()]
+    except Exception:
+        prefixes = [fig.get("prefix") for fig in _DEFAULT_FIGURE_PREFIXES]
+    tokens = []
+    seen = set()
+    for prefix in prefixes:
+        if not prefix:
+            continue
+        for token in figure_social_tokens(prefix):
+            if token not in seen:
+                seen.add(token)
+                tokens.append(token)
+    return tokens
+
+
+_DEFAULT_FIGURE_PREFIXES = ["MUSK", "TRUMP"]
+
+# Sentinel token used when no figure tracks a given ticker
+SOCIAL_INDICATOR_KEYS = [
+    "social_sentiment",
+]
+
 # Sector-relative performance tokens
 RELATIVE_TOKENS = [
     "REL_Strong",    # Strong vs sector
@@ -276,6 +337,7 @@ INDICATOR_TOKENS = (
     SENTIMENT_TOKENS +
     NEWS_TOKENS +
     SOCIAL_TOKENS +
+    FIGURE_SOCIAL_TOKENS +
     RELATIVE_TOKENS
 )
 
@@ -396,6 +458,11 @@ def get_token_category(token: str) -> str:
         return "news"
     if token in SOCIAL_TOKENS:
         return "social"
+    if token in FIGURE_SOCIAL_TOKENS:
+        return "social"
+    # User-added figures: SOC_<PREFIX>_<Suffix>
+    if token.startswith("SOC_") and token.split("_")[-1] in _SOC_SUFFIXES:
+        return "social"
     if token in RELATIVE_TOKENS:
         return "relative"
     if token in ACTION_TOKENS:
@@ -426,6 +493,7 @@ if __name__ == "__main__":
     print(f"  Sentiment: {len(SENTIMENT_TOKENS)}")
     print(f"  News: {len(NEWS_TOKENS)}")
     print(f"  Social: {len(SOCIAL_TOKENS)}")
+    print(f"  Figure Social: {len(FIGURE_SOCIAL_TOKENS)}")
     print(f"  Relative: {len(RELATIVE_TOKENS)}")
     print(f"  Actions: {len(ACTION_TOKENS)}")
     
